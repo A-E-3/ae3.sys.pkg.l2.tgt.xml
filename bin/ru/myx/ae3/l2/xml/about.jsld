@@ -1,7 +1,0 @@
-{
-	layout : "intl",
-	value : {
-		en : "Русский. This is XML renderer. ",
-		ru : "Это XML рендерер."
-	}
-}
