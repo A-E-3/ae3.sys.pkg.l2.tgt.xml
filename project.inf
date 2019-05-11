@@ -1,0 +1,10 @@
+Type: ae3.Package
+Name: ae3.pkg.tgt.xml
+Info: XML (+XSLT) Rendering output
+Requires: ae3.sdk
+Provides:	\
+	ae3.pkg.tgt.xml \
+	source-process:compile-java \
+	source-process:java-compile:java \
+	source-process:ae3-packages \
+	export-classpath:java \
