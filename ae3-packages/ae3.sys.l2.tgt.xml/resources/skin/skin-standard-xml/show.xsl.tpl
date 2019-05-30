@@ -851,6 +851,7 @@
 				</xsl:if>
 			</xsl:when>
 			<xsl:when test="$format/@variant='period' and string(number($value))!='NaN'">
+				<xsl:attribute name="data-type">numeric</xsl:attribute>
 				<xsl:variable name="scaleSetting">
 					<xsl:choose>
 						<xsl:when test="$format/@scale and $format/@scale!=''">
@@ -877,19 +878,22 @@
 				</xsl:choose>
 			</xsl:when>
 			<xsl:when test="$format/@variant='integer' and string(number($value))!='NaN'">
-				<xsl:variable name="number" select="number($value)"/>
 				<xsl:attribute name="data-type">numeric</xsl:attribute>
-				<xsl:value-of select="format-number($number,'### ##0', 'decimal')"/>
+				<xsl:variable name="number" select="number($value)"/>
+				<xsl:value-of select="format-number($number,'### ##0', 'decimal')" />
 			</xsl:when>
 			<xsl:when test="$format/@variant='price' and string(number($value))!='NaN'">
+				<xsl:attribute name="data-type">numeric</xsl:attribute>
 				<xsl:variable name="number" select="number($value)"/>
 				<xsl:value-of select="format-number($number,'### ##0.00', 'decimal')"/>
 			</xsl:when>
 			<xsl:when test="$format/@variant='decimal' and string(number($value))!='NaN'">
+				<xsl:attribute name="data-type">numeric</xsl:attribute>
 				<xsl:variable name="number" select="number($value)"/>
 				<xsl:value-of select="format-number($number,'### ##0.000', 'decimal')"/>
 			</xsl:when>
 			<xsl:when test="$format/@variant='bytes' and string(number($value))!='NaN'">
+				<xsl:attribute name="data-type">numeric</xsl:attribute>
 				<xsl:variable name="number" select="number($value)"/>
 				<xsl:choose>
 					<xsl:when test="$number &gt; 115343360000"><xsl:value-of select="format-number($number div 1073741824, '### ##0', 'decimal')"/>GB</xsl:when>
