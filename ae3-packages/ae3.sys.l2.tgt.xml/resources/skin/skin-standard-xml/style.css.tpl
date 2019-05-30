@@ -1099,4 +1099,10 @@ INPUT.el-radio + LABEL.st-radio-sel:active::before {
 	}
 }
 
+[data-type="numeric"] {
+    white-space: nowrap;
+}
+
+
+
 /* <%/FORMAT%><%= '*' + '/' %><%/FINAL%> */
