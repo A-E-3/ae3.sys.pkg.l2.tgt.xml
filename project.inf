@@ -4,6 +4,7 @@ Info: XML (+XSLT) Rendering output
 Requires: ae3.sdk
 Provides:	\
 	ae3.pkg.tgt.xml \
+	ae3.sys.l2.tgt.xml \
 	source-process:compile-java \
 	source-process:java-compile:java \
 	source-process:ae3-packages \
