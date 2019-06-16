@@ -866,16 +866,16 @@
 				<xsl:variable name="scale" select="number($scaleSetting)"/>
 				<xsl:variable name="number" select="number($value) * $scale"/>
 				<xsl:choose>
-					<xsl:when test="$number &gt; 99900000"><span title="{$value} of {$scale} ms time units"><xsl:value-of select="format-number($number div 86400000, '### ##0.0', 'decimal')"/> d</span></xsl:when>
-					<xsl:when test="$number &gt; 86400000"><span title="{$value} of {$scale} ms time units"><xsl:value-of select="format-number($number div 86400000, '### ##0.00', 'decimal')"/> d</span></xsl:when>
-					<xsl:when test="$number &gt; 7200000"><span title="{$value} of {$scale} ms time units"><xsl:value-of select="format-number($number div 3600000, '### ##0.0', 'decimal')"/> h</span></xsl:when>
-					<xsl:when test="$number &gt; 3600000"><span title="{$value} of {$scale} ms time units"><xsl:value-of select="format-number($number div 3600000, '### ##0.00', 'decimal')"/> h</span></xsl:when>
-					<xsl:when test="$number &gt; 300000"><span title="{$value} of {$scale} ms time units"><xsl:value-of select="format-number($number div 60000, '### ##0.0', 'decimal')"/> m</span></xsl:when>
-					<xsl:when test="$number &gt; 120000"><span title="{$value} of {$scale} ms time units"><xsl:value-of select="format-number($number div 60000, '### ##0.0', 'decimal')"/> m</span></xsl:when>
-					<xsl:when test="$number &gt; 60000"><span title="{$value} of {$scale} ms time units"><xsl:value-of select="format-number($number div 60000, '### ##0.00', 'decimal')"/> m</span></xsl:when>
-					<xsl:when test="$number &gt; 5500"><span title="{$value} of {$scale} ms time units"><xsl:value-of select="format-number($number div 1000, '### ##0.0', 'decimal')"/> s</span></xsl:when>
-					<xsl:when test="$number &gt; 2200"><span title="{$value} of {$scale} ms time units"><xsl:value-of select="format-number($number div 1000, '### ##0.00', 'decimal')"/> s</span></xsl:when>
-					<xsl:otherwise><span title="{$value} of {$scale} ms time units"><xsl:value-of select="format-number($number, '### ##0', 'decimal')"/> ms</span></xsl:otherwise>
+					<xsl:when test="$number &gt; 99900000"><span title="{$value} of {$scale} ms time units"><xsl:value-of select="format-number($number div 86400000, '### ##0.0', 'decimal')"/>&#160;d</span></xsl:when>
+					<xsl:when test="$number &gt; 86400000"><span title="{$value} of {$scale} ms time units"><xsl:value-of select="format-number($number div 86400000, '### ##0.00', 'decimal')"/>&#160;d</span></xsl:when>
+					<xsl:when test="$number &gt; 7200000"><span title="{$value} of {$scale} ms time units"><xsl:value-of select="format-number($number div 3600000, '### ##0.0', 'decimal')"/>&#160;h</span></xsl:when>
+					<xsl:when test="$number &gt; 3600000"><span title="{$value} of {$scale} ms time units"><xsl:value-of select="format-number($number div 3600000, '### ##0.00', 'decimal')"/>&#160;h</span></xsl:when>
+					<xsl:when test="$number &gt; 300000"><span title="{$value} of {$scale} ms time units"><xsl:value-of select="format-number($number div 60000, '### ##0.0', 'decimal')"/>&#160;m</span></xsl:when>
+					<xsl:when test="$number &gt; 120000"><span title="{$value} of {$scale} ms time units"><xsl:value-of select="format-number($number div 60000, '### ##0.0', 'decimal')"/>&#160;m</span></xsl:when>
+					<xsl:when test="$number &gt; 60000"><span title="{$value} of {$scale} ms time units"><xsl:value-of select="format-number($number div 60000, '### ##0.00', 'decimal')"/>&#160;m</span></xsl:when>
+					<xsl:when test="$number &gt; 5500"><span title="{$value} of {$scale} ms time units"><xsl:value-of select="format-number($number div 1000, '### ##0.0', 'decimal')"/>&#160;s</span></xsl:when>
+					<xsl:when test="$number &gt; 2200"><span title="{$value} of {$scale} ms time units"><xsl:value-of select="format-number($number div 1000, '### ##0.00', 'decimal')"/>&#160;s</span></xsl:when>
+					<xsl:otherwise><span title="{$value} of {$scale} ms time units"><xsl:value-of select="format-number($number, '### ##0', 'decimal')"/>&#160;ms</span></xsl:otherwise>
 				</xsl:choose>
 			</xsl:when>
 			<xsl:when test="$format/@variant='integer' and string(number($value))!='NaN'">
