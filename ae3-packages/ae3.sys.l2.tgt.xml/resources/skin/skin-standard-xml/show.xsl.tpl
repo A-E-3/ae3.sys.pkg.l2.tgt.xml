@@ -439,7 +439,7 @@
 				</xsl:variable>
 				<xsl:choose>
 					<xsl:when test="$format/@variant = 'checkbox'">
-						<input type="checkbox" name="{$format/@name}" value="{$inputValue}"><xsl:if test="$format/@selected = '*' or $format/@selected = $inputValue"><xsl:attribute name="checked">checked</xsl:attribute></xsl:if></input>
+						<input type="checkbox" name="{$format/@name}" value="{$inputValue}"><xsl:if test="$format/@selected = '*' or $format/@selected = $inputValue or $value/../@*[$format/@selected and local-name() = $format/@selected]"><xsl:attribute name="checked">checked</xsl:attribute></xsl:if></input>
 					</xsl:when>
 					<xsl:when test="$format/@variant = 'radio'">
 						<input type="radio" name="{$format/@name}" value="{$inputValue}"><xsl:if test="$format/@selected = $inputValue"><xsl:attribute name="checked">checked</xsl:attribute></xsl:if></input>
@@ -1269,7 +1269,7 @@
 					<xsl:otherwise>
 						<table value="{$value}">
 							<xsl:for-each select="option | options">
-								<tr><label><td><input type="checkbox" name="{$format/@name}" value="{@value}"><xsl:if test="$format/@selected = '*' or $format/@selected = @value"><xsl:attribute name="checked">checked</xsl:attribute></xsl:if></input></td><td><xsl:value-of select="@title"/></td></label></tr>
+								<tr><label><td><input type="checkbox" name="{$format/@name}" value="{@value}"><xsl:if test="$format/@selected = '*' or $format/@selected = @value or @*[$format/@selected and local-name() = $format/@selected]"><xsl:attribute name="checked">checked</xsl:attribute></xsl:if></input></td><td><xsl:value-of select="@title"/></td></label></tr>
 							</xsl:for-each>
 						</table>
 					</xsl:otherwise>
