@@ -70,7 +70,7 @@
 							<link rel="stylesheet" type="text/css" href="{$base}/!/skin/skin-standard-xml/style.css" />
 						</xsl:otherwise>
 					</xsl:choose>
-					<script type="text/javascript" language="javascript" src="{$base}/!/skin/skin-jsclient/js/require.js"></script>
+					<script type="text/javascript" src="{$base}/!/skin/skin-jsclient/js/require.js"></script>
 					<meta name="apple-mobile-web-app-capable" content="yes" />
 					<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 					<style>
