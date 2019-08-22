@@ -411,12 +411,6 @@
 		<xsl:param name="format" />
 		<xsl:param name="value" />
 		<xsl:param name="zoom" />
-		<xsl:if test="($format/@name or $format/@field) and $value and $format/@type='constant'">
-			<xsl:variable name="fieldName"><xsl:value-of select="$format/@field"/><xsl:value-of select="$format/@name[not($format/@field)]"/></xsl:variable>
-			<xsl:if test="$fieldName and $fieldName != '' and $fieldName != '.'">
-				<input type="hidden" name="{$fieldName}" value="{$value}"/>
-			</xsl:if>
-		</xsl:if>
 		<xsl:choose>
 			<xsl:when test="not($value) and $format and ($format/@default or $format/default)">
 				<xsl:call-template name="formatted">
@@ -916,6 +910,12 @@
 				&#160;
 			</xsl:otherwise>
 		</xsl:choose>
+		<xsl:if test="($format/@name or $format/@field) and $value and $format/@type='constant'">
+			<xsl:variable name="fieldName"><xsl:value-of select="$format/@field"/><xsl:value-of select="$format/@name[not($format/@field)]"/></xsl:variable>
+			<xsl:if test="$fieldName and $fieldName != '' and $fieldName != '.'">
+				<input type="hidden" name="{$fieldName}" value="{$value}"/>
+			</xsl:if>
+		</xsl:if>
 	</xsl:template>
 
 	<xsl:template match="formatted | *[@layout='formatted']">
@@ -1114,11 +1114,11 @@
 		<xsl:param name="zoom" />
 		<xsl:choose>
 			<xsl:when test="$format/@type='constant'">
-				<xsl:call-template name="formatted">
+				<span><xsl:call-template name="formatted">
 					<xsl:with-param name="format" select="$format"/>
 					<xsl:with-param name="value" select="$value"/>
 					<xsl:with-param name="zoom" select="$zoom"/>
-				</xsl:call-template>
+				</xsl:call-template></span>
 			</xsl:when>
 			<xsl:when test="$format/@type='price' or $format/@variant='price'">
 				<input type="number" step="0.01" min="0" name="{$format/@name}" value="{$value}">
@@ -1315,6 +1315,7 @@
 		<xsl:call-template name="input">
 			<xsl:with-param name="format" select="."/>
 			<xsl:with-param name="value" select="$value/../*[local-name() = $fieldName] | $value/@*[local-name() = $fieldName]"/>
+			<xsl:with-param name="zoom" select="$zoom"/>
 		</xsl:call-template>
 	</xsl:template>
 
