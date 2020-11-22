@@ -2,7 +2,7 @@ Type: ae3.Package
 Name: ae3.pkg.tgt.xml
 Info: XML (+XSLT) Rendering output
 Requires: ae3.sdk
-Provides:	\
+Provides: \
 	ae3.pkg.tgt.xml \
 	ae3.sys.l2.tgt.xml \
 	source-process:compile-java \
