@@ -1,6 +1,6 @@
 {
-	type : "ae3.Package",
-	name : 'ae3.sys.l2.tgt.xml',
-	description : 'AE3 L2 Media Target: XML / XML+XSL',
-	requires : 'ae3.base'
+	"type" : "ae3.Package",
+	"name" : "ae3.sys.l2.tgt.xml",
+	"description" : "AE3 L2 Media Target: XML / XML+XSL",
+	"requires" : "ae3.base"
 }
