@@ -1174,8 +1174,8 @@
 				<xsl:choose>
 					<xsl:when test="list">
 						<xsl:call-template name="list">
-							<xsl:with-param name="list" select="list"/>
-							<xsl:with-param name="rows" select="list/rows | options[not(list/rows)]"/>
+							<xsl:with-param name="list" select="$format/list"/>
+							<xsl:with-param name="rows" select="$format/list/rows | options[not($format/list/rows)]"/>
 							<xsl:with-param name="zoom" select="'row'"/>
 							<xsl:with-param name="parentInputValue" select="$value"/>
 						</xsl:call-template>
@@ -1264,8 +1264,8 @@
 				<xsl:choose>
 					<xsl:when test="list">
 						<xsl:call-template name="list">
-							<xsl:with-param name="list" select="list"/>
-							<xsl:with-param name="rows" select="list/rows"/>
+							<xsl:with-param name="list" select="$format/list"/>
+							<xsl:with-param name="rows" select="$format/list/rows | options[not($format/list/rows)]"/>
 							<xsl:with-param name="zoom" select="'row'"/>
 						</xsl:call-template>
 					</xsl:when>
