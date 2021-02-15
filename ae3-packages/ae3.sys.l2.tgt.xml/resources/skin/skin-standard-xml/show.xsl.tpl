@@ -1206,7 +1206,7 @@
 						</div>
 					</xsl:when>
 					<xsl:when test="$format/@variant='edit'">
-						<div x-ui-debug="input/select/edit {$parentInputValue}">
+						<div x-ui-debug="input/select/edit">
 							<xsl:variable name="id" select="generate-id($format)"/>
 							<xsl:variable name="itemZoom"><xsl:value-of select="$format/@zoom" /><xsl:if test="not($format/@zoom)"><xsl:value-of select="$zoom" /></xsl:if></xsl:variable>
 							<style><xsl:for-each select="option | options">
@@ -1229,7 +1229,7 @@
 						</div>
 					</xsl:when>
 					<xsl:when test="$format/@variant='radio'">
-						<div x-ui-debug="input/select/radio {$parentInputValue}">
+						<div x-ui-debug="input/select/radio">
 							<xsl:variable name="id" select="generate-id($format)"/>
 							<style><xsl:for-each select="option | options">
 									#m<xsl:value-of select='$id'/>-<xsl:value-of select='@value'/>:checked ~ #s<xsl:value-of select="$id"/>-<xsl:value-of select="@value"/>{ display: block; }
@@ -1547,6 +1547,8 @@
 		<xsl:param name="format" />
 		<xsl:param name="values" />
 		<xsl:param name="zoom"><xsl:value-of select="$format/@zoom" /><xsl:if test="not($format/@zoom)"><xsl:value-of select="$zoom" /></xsl:if></xsl:param>
+		<xsl:param name="parentInputValue" />
+
 		<xsl:variable name="itemZoom">
 			<xsl:choose>
 				<xsl:when test="$zoom = 'document' or $zoom = 'window'">
