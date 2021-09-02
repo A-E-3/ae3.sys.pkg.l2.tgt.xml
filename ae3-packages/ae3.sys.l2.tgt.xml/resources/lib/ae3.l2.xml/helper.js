@@ -416,7 +416,7 @@ function makeMessageReply(context, layout){
 			if(filters && filters.fields){
 				= formatXmlElement('prefix', new FiltersFormLayout(filters));
 			}
-			%><reason><%= formatXmlNodeValue(reason || 'Unclassified message.') %></reason><%
+			%><reason><%= formatXmlNodeValue(reason ? (reason.title || reason) : 'Unclassified message.') %></reason><%
 			if(message && message !== reason){
 				if('string' === typeof message){
 					%><message class="code style--block"><%= formatXmlNodeValue(message) %></message><%
