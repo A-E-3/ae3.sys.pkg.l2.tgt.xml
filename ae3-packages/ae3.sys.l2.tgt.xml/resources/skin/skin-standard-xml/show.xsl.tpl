@@ -45,7 +45,7 @@
 			<xsl:comment> zoom: <xsl:value-of select='$zoom'/> </xsl:comment>
 			<xsl:comment> sudo: <xsl:value-of select='$sudo'/> </xsl:comment>
 			<xsl:comment> stdl: <xsl:value-of select='$standalone'/> </xsl:comment>
-			<xsl:comment> make: 20190617T2136Z </xsl:comment>
+			<xsl:comment> make: 20221201T21236Z </xsl:comment>
 			<xsl:for-each select="*">
 				<head>
 					<title>
@@ -609,27 +609,49 @@
 							</td>
 							<td class="field fldval">
 								<div>
+									<xsl:variable name="fieldName"><xsl:value-of select="$field/@name"/></xsl:variable>
 									<xsl:choose>
-										<xsl:when test="$field/@name = '' or not($field/@name)">
+										<xsl:when test="$fieldName = '' or not($fieldName)">
 											<xsl:call-template name="formatted">
 												<xsl:with-param name="format" select="$field"/>
 												<xsl:with-param name="value" select="$field/@value | $value[not($field/@value)]"/>
 											</xsl:call-template>
 											<xsl:comment> l: 420 ^ </xsl:comment>
 										</xsl:when>
-										<xsl:when test="$field/@name = '.'">
+										<xsl:when test="$fieldName = '.'">
 											<xsl:call-template name="formatted">
 												<xsl:with-param name="format" select="$field"/>
 												<xsl:with-param name="value" select="$value"/>
 											</xsl:call-template>
+											<xsl:comment> l: 425 ^ </xsl:comment>
+										</xsl:when>
+										<xsl:when test="$value/values/*[local-name() = $fieldName]">
+											<xsl:call-template name="formatted">
+												<xsl:with-param name="format" select="$field"/>
+												<xsl:with-param name="value" select="$value/values/*[local-name() = $fieldName]"/>
+											</xsl:call-template>
+											<xsl:comment> l: 426 ^ </xsl:comment>
+										</xsl:when>
+										<xsl:when test="$value/*[local-name() = $fieldName]">
+											<xsl:call-template name="formatted">
+												<xsl:with-param name="format" select="$field"/>
+												<xsl:with-param name="value" select="$value/*[local-name() = $fieldName]"/>
+											</xsl:call-template>
 											<xsl:comment> l: 427 ^ </xsl:comment>
+										</xsl:when>
+										<xsl:when test="$value/values/@*[local-name() = $fieldName]">
+											<xsl:call-template name="formatted">
+												<xsl:with-param name="format" select="$field"/>
+												<xsl:with-param name="value" select="$value/values/@*[local-name() = $fieldName]"/>
+											</xsl:call-template>
+											<xsl:comment> l: 428 ^ </xsl:comment>
 										</xsl:when>
 										<xsl:otherwise>
 											<xsl:call-template name="formatted">
 												<xsl:with-param name="format" select="$field"/>
-												<xsl:with-param name="value" select="$value/*[local-name() = $field/@name] | $value/values/*[local-name() = $field/@name] | $value/values/@*[local-name() = $field/@name]"/>
+												<xsl:with-param name="value" select="$value/@*[local-name() = $fieldName]"/>
 											</xsl:call-template>
-											<xsl:comment> l: 434 ^ </xsl:comment>
+											<xsl:comment> l: 429 ^ </xsl:comment>
 										</xsl:otherwise>
 									</xsl:choose>
 									<xsl:call-template name="hint"/>
