@@ -45,7 +45,7 @@
 			<xsl:comment> zoom: <xsl:value-of select='$zoom'/> </xsl:comment>
 			<xsl:comment> sudo: <xsl:value-of select='$sudo'/> </xsl:comment>
 			<xsl:comment> stdl: <xsl:value-of select='$standalone'/> </xsl:comment>
-			<xsl:comment> make: 20221201T21236Z </xsl:comment>
+			<xsl:comment> make: 20221208T21236Z </xsl:comment>
 			<xsl:for-each select="*">
 				<head>
 					<title>
@@ -345,18 +345,26 @@
 									<table style="width:100%" border="0">
 										<tr>
 											<td align="left">
-												<h5 style="padding:0;margin:0;">
-													Jump to: 
+												<h5 style="padding:0;margin:0;" class="ui-cmd-link-group">
+													<xsl:for-each select="command[@ui = 'jump'] | client/command[@ui = 'jump']">
+														<xsl:call-template name="command">
+															<xsl:with-param name="format" select="."/>
+															<xsl:with-param name="zoom" select="'compact'"/>
+															<xsl:with-param name="depth" select="2"/>
+														</xsl:call-template>
+													</xsl:for-each>
 													<xsl:for-each select="../list/next[@uri and (@pending != 'false' or not(@pending))]">
-														<a href="{@uri}">
+														<a href="{@uri}" class="ui-cmd-link-compact">
 															<xsl:value-of select="@title"/>
 															<xsl:if test="not(@title)"> next page... </xsl:if>
-														</a> or 
+														</a>
 													</xsl:for-each>
 													<xsl:if test="@jumpUrl">
-														<a href="{@jumpUrl}"><xsl:value-of select='@jumpTitle'/></a> or 
+														<a href="{@jumpUrl}" class="ui-cmd-link-compact"><xsl:value-of select='@jumpTitle'/></a> 
 													</xsl:if>
-													<a href="index">index menu...</a>
+													<xsl:if test="not(@no-index or @layout = 'menu' or local-name() = 'index')">
+														<a href="index" class="ui-cmd-link-compact">index menu...</a>
+													</xsl:if>
 												</h5>
 											</td>
 											<xsl:if test="client/@date">
@@ -899,8 +907,6 @@
 						</a>
 					</xsl:otherwise>
 				</xsl:choose>
-				<xsl:if test="$format/@icon">
-				</xsl:if>
 			</xsl:when>
 			<xsl:when test="$format/@variant='period' and string(number($value))!='NaN'">
 				<xsl:attribute name="data-type">numeric</xsl:attribute>
@@ -1746,7 +1752,7 @@
 			</xsl:if>
 			<xsl:for-each select="$items">
 				<a href="{@key}{@url}" class="ui-cmd-link">
-					<div class="hl hl-bn-{@admin} hl-hd-{@hidden} hl-ui-{@ui} idx-box-cell">
+					<div class="hl hl-bn-{@access} hl-hd-{@hidden} hl-ui-{@ui} idx-box-cell">
 						<div class="ui-cmd-icon">
 							<xsl:if test="@icon">
 								<img src="{$base}/__i/famfamfam.com/silk/{@icon}.png" class="icon"/>
@@ -1923,6 +1929,53 @@
 				<div class="hint"><xsl:apply-templates select="hint/node()"/></div>
 			</xsl:when>
 		</xsl:choose>
+	</xsl:template>
+
+	<xsl:template name="command">
+		<xsl:param name="format"/>
+		<xsl:param name="zoom"/>
+		<xsl:param name="depth" select="$depth | 2[not($depth)]"/>
+		<xsl:comment> command-check: zoom: <xsl:value-of select="$zoom" />, depth: <xsl:value-of select="$depth" />, limit: <xsl:value-of select="@depthLimit" /></xsl:comment>
+		<xsl:variable name="iconWithTitle">
+			<div class="ui-cmd-icon">
+				<xsl:if test="@icon">
+					<img src="{$base}/__i/famfamfam.com/silk/{@icon}.png" class="icon"/>
+				</xsl:if>
+				<xsl:if test="not(@icon)">
+					<img src="{$base}/__i/famfamfam.com/silk/bullet_go.png" class="icon"/>
+				</xsl:if>
+			</div>
+			<div class="ui-cmd-text">
+				<xsl:call-template name="formats-title">
+					<xsl:with-param name="format" select="."/>
+				</xsl:call-template>
+			</div>
+		</xsl:variable>
+		<!-- xsl:choose /-->
+			<!-- xsl:when test="$zoom = 'compact'" /-->
+				<a href="{@key}" class="ui-cmd-link-{$zoom}">
+					<div class="hl-bn-{@access} hl-hd-{@hidden} hl-ui-{@ui} idx-box-{$zoom}">
+						<xsl:copy-of select="$iconWithTitle"/>
+						<xsl:if test="$zoom != 'compact'">
+							<xsl:for-each select="preview">
+								<xsl:if test="not(@depthLimit) or (@depthLimit &gt;= $depth)">
+									<a href="javascript:void" class="ui-cmd-preview-block">
+										<xsl:call-template name="formatted">
+											<xsl:with-param name="format" select="."/>
+											<xsl:with-param name="value" select="."/>
+											<xsl:with-param name="zoom" select="$itemZoom"/>
+										</xsl:call-template>
+									</a>
+								</xsl:if>
+							</xsl:for-each>
+						</xsl:if>
+					</div>
+				</a>
+			<!-- /xsl:when /-->
+			<!-- xsl:otherwise /-->
+				<!-- div class="hint">22222</div /-->
+			<!-- /xsl:otherwise /-->
+		<!-- /xsl:choose /-->
 	</xsl:template>
 
 	<xsl:template match="*[@layout='view']">
@@ -2402,9 +2455,9 @@
 		</xsl:if>
 		<xsl:variable name="items" select="command | index"/>
 		<xsl:if test="$items">
-			<xsl:if test="$depth = 1 and (@zoom='document' or $zoom='document') and (.//command | .//index)">
+			<xsl:if test="$depth = 1 and (@zoom='document' or $zoom='document') and $items">
 				<div style="clear:both">
-					<xsl:if test=".//command/@hidden | .//index/@hidden">
+					<xsl:if test="$items/@hidden">
 						<button id="{$unique}-btn" class="ui-menu-btn-ini no-print" style="opacity:0.35">
 							<div class="ui-cmd-icon"><img src="{$base}/__i/famfamfam.com/silk/cog_delete.png" class="icon"/></div>
 							<div class="ui-cmd-text">Show all commands</div>
@@ -2429,6 +2482,7 @@
 			<xsl:comment> depth: <xsl:value-of select="$depth" /> </xsl:comment>
 			<div id="{$unique}-ctn" class="ui-menu-{$zoom}">
 				<xsl:for-each select="$items">
+					<xsl:comment> item-depth-check: depth: <xsl:value-of select="$depth" />, limit: <xsl:value-of select="@depthLimit" /></xsl:comment>
 					<xsl:variable name="iconWithTitle">
 						<div class="ui-cmd-icon">
 							<xsl:if test="@icon">
@@ -2444,19 +2498,18 @@
 							</xsl:call-template>
 						</div>
 					</xsl:variable>
-					<xsl:comment> depth-check: depth: <xsl:value-of select="$depth" />, limit: <xsl:value-of select="@depthLimit" /></xsl:comment>
 					<xsl:choose>
 						<xsl:when test="@key='index' and local-name()='command'">
 							<!-- skip -->
 						</xsl:when>
 						<xsl:when test="local-name()='command'">
 							<a href="{@key}" class="ui-cmd-link">
-								<div class="hl hl-bn-{@admin} hl-hd-{@hidden} hl-ui-{@ui} idx-box-cell">
+								<div class="hl hl-bn-{@access} hl-hd-{@hidden} hl-ui-{@ui} idx-box-cell">
 									<xsl:copy-of select="$iconWithTitle"/>
 									<xsl:if test="$itemZoom != 'compact'">
 										<xsl:for-each select="preview">
 											<xsl:if test="not(@depthLimit) or (@depthLimit &gt;= $depth)">
-												<a href="javascript:void" style="display: block; margin: 0.1em 0.1em 0.1em 1.2em;">
+												<a href="javascript:void" class="ui-cmd-preview-block">
 													<xsl:call-template name="formatted">
 														<xsl:with-param name="format" select="."/>
 														<xsl:with-param name="value" select="."/>
@@ -2471,7 +2524,7 @@
 						</xsl:when>
 						<xsl:otherwise>
 							<a href="{@key}" class="ui-cmd-link">
-								<div class="hl hl-bn-{@admin} hl-hd-{@hidden} hl-ui-{@ui} idx-grp-cell">
+								<div class="hl hl-bn-{@access} hl-hd-{@hidden} hl-ui-{@ui} idx-grp-cell">
 									<xsl:copy-of select="$iconWithTitle"/>
 									<xsl:if test="not(@depthLimit) or (@depthLimit &gt; $depth)">
 										<xsl:apply-templates select=".">
