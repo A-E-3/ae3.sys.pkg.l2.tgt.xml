@@ -321,6 +321,9 @@ TABLE.items TD.cell-tp-number, TD.cell-tp-number{
 	text-align: right;
 	white-space: nowrap;
 }
+INPUT[type=""]:invalid, INPUT[type="text"]:invalid, INPUT[type="number"]:invalid, INPUT[type="password"]:invalid{
+	background-color: #fee;
+}
 INPUT, SELECT{
 	min-width: 160pt;
 }
