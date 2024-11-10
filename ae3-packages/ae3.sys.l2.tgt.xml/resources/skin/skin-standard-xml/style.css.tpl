@@ -321,13 +321,32 @@ TABLE.items TD.cell-tp-number, TD.cell-tp-number{
 	text-align: right;
 	white-space: nowrap;
 }
-INPUT[type=""]:invalid, INPUT[type="text"]:invalid, INPUT[type="number"]:invalid, INPUT[type="password"]:invalid{
-	background-color: #fee;
+
+INPUT[type=""]:invalid, 
+INPUT[type="text"]:invalid, 
+INPUT[type="string"]:invalid, 
+INPUT[type="number"]:invalid, 
+INPUT[type="password"]:invalid {
+	background-color: #fffafa;
+	outline: 4pt solid #fcc;
+	outline: 400em solid rgba(255,0,0,0.25);
+	outline-offset: -0.75pt;
 }
+
+SELECT:invalid{
+	outline: 4pt solid #ffcccc;
+	outline: 400em solid rgba(255,100,100,0.25);
+	outline-offset: -0.75pt;
+}
+
+INPUT.el-radio[type="radio"]:invalid+LABEL.el-radio {
+	background-color: #ffe0e0;
+}
+
 INPUT, SELECT{
 	min-width: 160pt;
 }
-INPUT[type=""], INPUT[type="text"]{
+INPUT[type=""], INPUT[type="text"], INPUT[type="string"]{
 	width: 100%;
 }
 INPUT[type=number]{
@@ -1058,13 +1077,43 @@ DIV.ui-illustration-central{
 	opacity: 1;
 }
 
-
-.el-radio-tab-item, .el-radio-sel-item {
+.el-radio-tab-item {
 	display: none;
 }
 
-.el-radio-sel-item {
+DIV.el-radio-sel-item {
+	/* prevents transition on inputs
+	display: none;
+	content-visibility: hidden;
+	*/
 	margin: 0 0 0 1em;
+	height: 0;
+	width: 0;
+	overflow: hidden;
+	visibility: hidden;
+}
+
+DIV.el-radio-sel-item INPUT, 
+DIV.el-radio-sel-item SELECT{
+	opacity: 0;
+	visibility: hidden;
+	transition: opacity 3ms, visibility 3ms;
+}
+
+INPUT.el-radio:checked + LABEL.el-radio + DIV.el-radio-sel-item {
+	/* prevents transition on inputs
+	display: block;
+	content-visibility: visible;
+	*/
+	height: unset;
+	width: unset;
+	visibility: unset;
+}
+
+INPUT.el-radio:checked + LABEL.el-radio + DIV.el-radio-sel-item INPUT, 
+INPUT.el-radio:checked + LABEL.el-radio + DIV.el-radio-sel-item SELECT{
+	opacity: 1;
+	visibility: visible;
 }
 
 INPUT.el-radio {
