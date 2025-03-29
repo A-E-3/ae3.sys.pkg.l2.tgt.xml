@@ -87,44 +87,81 @@ function makeMessageReply(context, layout){
 	element ||= "message";
 	reason ||= ("string" === typeof message && message) || layout.title;
 	
-	const title = layout.title || context.title || (context.share || "").systemName || "Message";
+	const title = layout.title || context.title || context.share?.systemName || "Message";
 	const detail = layout.detail;
 	
-	const filters = layout.filters || (message||"").filters;
+	const attributes = "string" === typeof title
+		? Object.create(layout.attributes ?? null, {
+			title : {
+				value : title,
+				enumerable : true
+			},
+			code : {
+				value : code,
+				enumerable : true
+			},
+			icon : {
+				value : icon,
+				enumerable : true
+			},
+			hl : {
+				value : hl,
+				enumerable : true
+			},
+			zoom : {
+				value : layout?.zoom,
+				enumerable : true
+			}
+		})
+		: Object.create(title, {
+			code : {
+				value : code,
+				enumerable : true
+			},
+			icon : {
+				value : icon,
+				enumerable : true
+			},
+			hl : {
+				value : hl,
+				enumerable : true
+			}
+		})
+	;
+
+	const filters = layout.filters ?? message?.filters ?? context.layoutFilters;
 	
+	const formatFull = query && query.parameters.format !== "clean";
+
 	var xml = "";
 	$output(xml){
-		%><<%= element; = "string" === typeof title 
-			? formatXmlAttributes({
-				title : title,
-				code : code,
-				icon : icon,
-				hl : hl,
-				zoom : layout.zoom
-			})
-			: formatXmlAttributes(Object.create(title, {
-				code : {
-					value : code,
-					enumerable : true
-				},
-				icon : {
-					value : icon,
-					enumerable : true
-				},
-				hl : {
-					value : hl,
-					enumerable : true
-				}
-			}));
-		 %> layout="message"<%
-		%>><%
+		%><<%= element; %><%= formatXmlAttributes(attributes); %> layout="message"><%
+		
 			if(context.share){
 				= formatXmlElement("client", context.share.clientElementProperties(context));
+				if(formatFull && context.rawHtmlHeadData){
+					%><rawHeadData><%
+						%><![CDATA[<%
+							= context.rawHtmlHeadData;
+						%>]]><%
+					%></rawHeadData><%
+				}
 			}
-			if(filters?.fields){
-				= formatXmlElement("prefix", new FiltersFormLayout(filters));
+			
+			if(formatFull){
+				
+				if(layout.prefix){
+					= this.internOutputValue("prefix", layout.prefix);
+				}
+				
+				if(filters?.fields){
+					= formatXmlElement("prefix", new FiltersFormLayout(filters));
+				}
+				
 			}
+			
 			%><reason><%= formatXmlNodeValue(reason ? (reason.title || reason) : "Unclassified message.") %></reason><%
+			
 			if(message && message !== reason){
 				if("string" === typeof message){
 					%><message class="code style--block"><%= formatXmlNodeValue(message) %></message><%
@@ -133,16 +170,23 @@ function makeMessageReply(context, layout){
 					= this.internOutputValue("message", message || reason);
 				}
 			}
-			if(detail){
-				if("string" === typeof detail){
-					%><detail class="code style--block"><%= formatXmlNodeValue(detail) %></detail><%
-				}else{
-					= this.internOutputValue("detail", detail);
+			
+			if(formatFull){
+				
+				if(detail){
+					if("string" === typeof detail){
+						%><detail class="code style--block"><%= formatXmlNodeValue(detail) %></detail><%
+					}else{
+						= this.internOutputValue("detail", detail);
+					}
 				}
+				
+				if(layout.help || message?.help){
+					%><help src="<%= formatXmlAttributeFragment(layout.help || message?.help) %>"/><%
+				}
+				
 			}
-			if((layout.help || message?.help) && context.query.parameters.format !== "clean"){
-				%><help src="<%= formatXmlAttributeFragment(layout.help || message?.help) %>"/><%
-			}
+			
 		%></<%= element; %>><%
 	}
 	return {
