@@ -1,3 +1,7 @@
+/**
+ * 
+ */
+
 function FiltersFormLayout(filters){
 	this.fields	= { 
 		field	: filters.fields, 
