@@ -7,9 +7,11 @@ function internReplaceValue(value){
 	if(value === null || value === undefined || "object" !== typeof value || Array.isArray(value)){
 		return value;
 	}
+	
 	var layout, values;
 	switch(value.layout){
 	case "data-view":
+		
 		layout = Object.create(value);
 		layout.layout = "view";
 		values = "object" === typeof value.values ? Object.create(value.values) : {};
@@ -23,6 +25,7 @@ function internReplaceValue(value){
 		value.commands && (layout.fields.command = value.commands, layout.commands = null);
 		value.help && (layout.fields.help = value.help, layout.help = null);
 		return layout;
+		
 	case "data-form":
 		layout = Object.create(value);
 		layout.layout = "form";
@@ -41,6 +44,7 @@ function internReplaceValue(value){
 		value.submit && (layout.fields.submit = value.submit, layout.submit = null);
 		value.help && (layout.fields.help = value.help, layout.help = null);
 		return layout;
+		
 	case "data-list":
 	case "data-table":
 		layout = Object.create(value);
@@ -55,6 +59,7 @@ function internReplaceValue(value){
 		value.commands && (layout.columns.command = value.commands, layout.commands = null);
 		value.help && (layout.fields.help = value.help, layout.help = null);
 		return layout;
+		
 	case "documentation":
 		layout = Object.create(value);
 		// layout.layout = "documentation";
@@ -62,19 +67,17 @@ function internReplaceValue(value){
 		value.help && (layout.fields.help = value.help, layout.help = null);
 		return layout;
 	}
-	{
-		var key, vale, repl;
-		for(key in value){
-			vale = value[key];
-			repl = this.internReplaceValue(vale);
-			if(repl !== vale){
-				layout ||= Object.create(value);
-				layout[key] = repl;
-			}
+	
+	var key, vale, repl;
+	for(key in value){
+		vale = value[key];
+		repl = this.internReplaceValue(vale);
+		if(repl !== vale){
+			layout ??= Object.create(value);
+			layout[key] = repl;
 		}
-		return layout || value;
 	}
-	// return value;
+	return layout ?? value;
 }
 
 module.exports = internReplaceValue;
