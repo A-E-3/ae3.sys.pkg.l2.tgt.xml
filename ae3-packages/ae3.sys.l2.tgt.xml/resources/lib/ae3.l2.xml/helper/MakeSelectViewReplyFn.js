@@ -52,7 +52,7 @@ function makeSelectViewReply(context, layout){
 	
 	const element = layout.rootName || "sequence";
 
-	const formatFull = query && query.parameters.format !== "clean";
+	const formatFull = query && query.parameters.format !== "clean" && !layout.clean && context.client?.uiFormat !== "clean";
 	
 	var xml = "";
 	$output(xml){

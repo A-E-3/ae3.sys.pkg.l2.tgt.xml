@@ -11,81 +11,10 @@ const formatXmlAttributeFragment = Format.xmlAttributeFragment;
 function makeMessageReply(context, layout){
 	const code = layout.code;
 	
-	var element = layout.rootName;
-	var hl = layout.hl;
-	var icon = layout.icon;
+	var element = layout.rootName || "message";
 	
 	var message = layout.message || layout.content;
-	var reason = layout.reason || (message && (message.reason || message.title));
-	
-	
-	if(code && !(hl || icon) && (code^0 === code)){
-		switch(code){
-		case 400:{
-			hl ??= "error";
-			icon ??= "stop";
-			element ||= "invalid";
-			reason ||= "Invalid Request";
-			message ??= "Some of request arguments or format are unacceptable, out of range or malformed.";
-			break;
-		}
-		case 403:{
-			hl ??= "error";
-			icon ??= "delete";
-			element ||= "denied";
-			reason ||= "Access Denied";
-			message ??= "The account is not granted with permission to execute the operation requested.";
-			break;
-		}
-		case 404:{
-			hl ??= "error";
-			icon ??= "error_delete";
-			element ||= "failed";
-			reason ||= "Resource Not Found";
-			message ??= "The client request references to resource that cannot be found or identified. Please, check the URL and other parameters of your request or contact an administrator if you believe that request is correct.";
-			break;
-		}
-		case 500:{
-			hl ??= "error";
-			icon ??= "exclamation";
-			element ||= "failed";
-			reason ||= "Internal Server Failure";
-			message ??= "The server encountered an internal problem while trying to satisfy the client request. Please, contact the administrator if you are concerned or if problem persists.";
-			break;
-		}
-		default:{
-			switch((code / 100)^0){
-			case 2:{
-				hl ??= "true";
-				icon ??= "tick";
-				element ||= "updated";
-				reason ||= "Operation Successful";
-				message ??= "The request seems to be satisfied with no further detail provided.";
-				break;
-			}
-			case 4:{
-				hl ??= "error";
-				icon ??= "error_delete";
-				element ||= "failed";
-				reason ||= "Unclassified Client Failure";
-				message ??= "The client request is not considered valid and will not be served.";
-				break;
-			}
-			case 5:{
-				hl ??= "error";
-				icon ??= "exclamation";
-				element ||= "failed";
-				reason ||= "Unclassified Server Failure";
-				message ??= "The server encountered an unsolvable problem while trying to satisfy the client request.";
-				break;
-			}
-			}
-		}
-		}
-	}
-	
-	element ||= "message";
-	reason ||= ("string" === typeof message && message) || layout.title;
+	var reason = layout.reason || message?.reason || message?.title || ("string" === typeof message && message) || layout.title;
 	
 	const title = layout.title || context.title || context.share?.systemName || "Message";
 	const detail = layout.detail;
@@ -101,15 +30,15 @@ function makeMessageReply(context, layout){
 				enumerable : true
 			},
 			icon : {
-				value : icon,
+				value : layout.icon,
 				enumerable : true
 			},
 			hl : {
-				value : hl,
+				value : layout.hl,
 				enumerable : true
 			},
 			zoom : {
-				value : layout?.zoom,
+				value : layout.zoom,
 				enumerable : true
 			}
 		})
@@ -119,11 +48,11 @@ function makeMessageReply(context, layout){
 				enumerable : true
 			},
 			icon : {
-				value : icon,
+				value : layout.icon,
 				enumerable : true
 			},
 			hl : {
-				value : hl,
+				value : layout.hl,
 				enumerable : true
 			}
 		})
@@ -131,7 +60,7 @@ function makeMessageReply(context, layout){
 
 	const filters = layout.filters ?? message?.filters ?? context.layoutFilters;
 	
-	const formatFull = query && query.parameters.format !== "clean";
+	const formatFull = query && query.parameters.format !== "clean" && !layout.clean && context.client?.uiFormat !== "clean";
 
 	var xml = "";
 	$output(xml){
