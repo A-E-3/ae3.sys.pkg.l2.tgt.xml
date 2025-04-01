@@ -688,6 +688,16 @@ SPAN.ui-fldbox-compact:hover, SPAN.ui-fldbox-compact:focus {
 	text-align: center;
 }
 
+ .ui-wg-message-title{
+ }
+ .ui-wg-message-code{
+ }
+ .ui-wg-message-text{
+ }
+ .ui-wg-message-detail{
+ }
+
+
 .icon.ui-message-icon-document, .icon.ui-message-icon-window {
 	width: 4em;
 	height: 4em;

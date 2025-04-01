@@ -5,16 +5,33 @@
 const FiltersFormLayout = require("./FiltersFormLayout");
 const formatXmlAttributes = Format.xmlAttributes;
 const formatXmlElement = Format.xmlElement;
+const formatXmlElements = Format.xmlElements;
 const formatXmlNodeValue = Format.xmlNodeValue;
 const formatXmlAttributeFragment = Format.xmlAttributeFragment;
 
 function makeMessageReply(context, layout){
+	const query = context?.query;
+	if(false && query?.parameters.___output){
+		switch(query.parameters.___output){
+		case "xml":
+			return require("ae3/xml").makeMessageReply(query, layout);
+		case "xls":
+			return require("ae3/xls").makeMessageReply(query, layout);
+		case "txt":
+			return require("ae3/txt").makeMessageReply(query, layout);
+		case "pdf":
+			return require("ae3/pdf").makeMessageReply(query, layout);
+		}
+	}
+
+	layout = this.internUiMessageEnrich(layout);
+	
 	const code = layout.code;
 	
-	var element = layout.rootName || "message";
+	const element = layout.rootName || "message";
 	
-	var message = layout.message || layout.content;
-	var reason = layout.reason || message?.reason || message?.title || ("string" === typeof message && message) || layout.title;
+	var message = layout.message;
+	var reason = layout.reason;
 	
 	const title = layout.title || context.title || context.share?.systemName || "Message";
 	const detail = layout.detail;
@@ -93,10 +110,13 @@ function makeMessageReply(context, layout){
 			
 			if(message && message !== reason){
 				if("string" === typeof message){
-					%><message class="code style--block"><%= formatXmlNodeValue(message) %></message><%
+					%><message debug="x-string" class="code style--block"><%= formatXmlNodeValue(message) %></message><%
 				}else //
 				if(message.layout){
-					= this.internOutputValue("message", message || reason);
+					= formatXmlElements("message", message);
+					// = this.internOutputValue("message", message);
+				}else{
+					%><message debug="x-non-layout" class="code style--block"><%= formatXmlNodeValue(Format.jsDescribe(message)) %></message><%
 				}
 			}
 			
@@ -104,9 +124,13 @@ function makeMessageReply(context, layout){
 				
 				if(detail){
 					if("string" === typeof detail){
-						%><detail class="code style--block"><%= formatXmlNodeValue(detail) %></detail><%
+						%><detail debug="x-string" class="code style--block"><%= formatXmlNodeValue(detail) %></detail><%
+					}else //
+					if(detail.layout){
+						= formatXmlElements("detail", detail);
+						// = this.internOutputValue("detail", detail);
 					}else{
-						= this.internOutputValue("detail", detail);
+						%><detail debug="x-non-layout" class="code style--block"><%= formatXmlNodeValue(Format.jsDescribe(detail)) %></detail><%
 					}
 				}
 				
