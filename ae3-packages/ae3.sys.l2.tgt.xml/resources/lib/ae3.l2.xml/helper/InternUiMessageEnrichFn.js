@@ -13,12 +13,25 @@ function internUiMessageEnrich(value, /* optional */ layout){
 		layout ??= Object.create(value);
 		layout.message = value.content;
 	}
+
+	if(!(layout ?? value).reason){
+		layout ??= Object.create(value);
+		layout.reason = layout.message?.reason || layout.message?.title || ("string" === typeof layout.message && layout.message) || layout.title
+	}
 	
 	if(value.code && !(value.hl || value.icon) && (value.code^0 === value.code)){
 		
 		layout ??= Object.create(value);
 		
 		switch(value.code){
+		case 200:
+			layout.hl ??= "true";
+			layout.icon ??= "tick";
+			layout.rootName ??= "success";
+			layout.reason ??= "Operation Successful";
+			layout.message ??= "The request seems to be satisfied with no further detail provided.";
+			break;
+
 		case 400:
 			layout.hl ??= "error";
 			layout.icon ??= "stop";
@@ -38,7 +51,7 @@ function internUiMessageEnrich(value, /* optional */ layout){
 		case 404:
 			layout.hl ??= "error";
 			layout.icon ??= "error_delete";
-			layout.rootName ??= "failed";
+			layout.rootName ??= "unknown";
 			layout.reason ??= "Resource Not Found";
 			layout.message ??= "The client request references to resource that cannot be found or identified. Please, check the URL and other parameters of your request or contact an administrator if you believe that request is correct.";
 			break;
@@ -46,7 +59,7 @@ function internUiMessageEnrich(value, /* optional */ layout){
 		case 500:
 			layout.hl ??= "error";
 			layout.icon ??= "exclamation";
-			layout.rootName ??= "failed";
+			layout.rootName ??= "error";
 			layout.reason ??= "Internal Server Failure";
 			layout.message ??= "The server encountered an internal problem while trying to satisfy the client request. Please, contact the administrator if you are concerned or if problem persists.";
 			break;
@@ -85,11 +98,6 @@ function internUiMessageEnrich(value, /* optional */ layout){
 		 */
 		layout.icon ??= "email_open";
 		
-	}
-	
-	if(!(layout ?? value).reason){
-		layout ??= Object.create(value);
-		layout.reason = layout.message?.reason || layout.message?.title || ("string" === typeof layout.message && layout.message) || layout.title
 	}
 	
 	var key, vale, repl;

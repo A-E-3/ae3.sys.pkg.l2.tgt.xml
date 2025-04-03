@@ -9,6 +9,39 @@ const formatXmlElements = Format.xmlElements;
 const formatXmlNodeValue = Format.xmlNodeValue;
 const formatXmlAttributeFragment = Format.xmlAttributeFragment;
 
+function internMakeDocumentAttributes(layout, title /* locals: */, attributes){
+	if("string" === typeof title){
+		if("object" === typeof layout.attributes){
+			attributes = Object.create(layout.attributes);
+			attributes.title = title;
+			attributes["x-xml-debug"] = "message-attributes-object";
+			return attributes;
+		}
+		attributes = Object.create(layout);
+		attributes.title = title;
+		attributes.reason = undefined;
+		attributes.message = undefined;
+		attributes.detail = undefined;
+		attributes.help = undefined;
+		attributes["x-xml-debug"] = "message-basic";
+		return attributes;
+	}
+	if("object" === typeof layout.attributes){
+		attributes = Object.assign(Object.create(layout.attributes), title)
+		attributes["x-xml-debug"] = "message-attributes-title-object";
+		return attributes;
+	}
+	if(false && "message" === layout.layout){
+		attributes = Object.create(layout);
+		attributes.title = title;
+		attributes["x-xml-debug"] = "message-layout";
+		return attributes;
+	}
+	attributes = Object.create(title);
+	attributes["x-xml-debug"] = "message-title-object";
+	return attributes;
+}
+
 function makeMessageReply(context, layout){
 	const query = context?.query;
 	if(false && query?.parameters.___output){
@@ -36,44 +69,12 @@ function makeMessageReply(context, layout){
 	const title = layout.title || context.title || context.share?.systemName || "Message";
 	const detail = layout.detail;
 	
-	const attributes = "string" === typeof title
-		? Object.create(layout.attributes ?? null, {
-			title : {
-				value : title,
-				enumerable : true
-			},
-			code : {
-				value : code,
-				enumerable : true
-			},
-			icon : {
-				value : layout.icon,
-				enumerable : true
-			},
-			hl : {
-				value : layout.hl,
-				enumerable : true
-			},
-			zoom : {
-				value : layout.zoom,
-				enumerable : true
-			}
-		})
-		: Object.create(title, {
-			code : {
-				value : code,
-				enumerable : true
-			},
-			icon : {
-				value : layout.icon,
-				enumerable : true
-			},
-			hl : {
-				value : layout.hl,
-				enumerable : true
-			}
-		})
-	;
+	const attributes = internMakeDocumentAttributes(layout, title);
+	attributes.hl = layout.hl;
+	attributes.code = layout.code;
+	attributes.zoom = layout.zoom;
+	attributes.icon = layout.icon;
+	attributes.layout = "message";
 
 	const filters = layout.filters ?? message?.filters ?? context.layoutFilters;
 	
@@ -81,7 +82,7 @@ function makeMessageReply(context, layout){
 
 	var xml = "";
 	$output(xml){
-		%><<%= element; %><%= formatXmlAttributes(attributes); %> layout="message"><%
+		%><<%= element; %><%= formatXmlAttributes(attributes); %>><%
 		
 			if(context.share){
 				= formatXmlElement("client", context.share.clientElementProperties(context));
@@ -120,19 +121,19 @@ function makeMessageReply(context, layout){
 				}
 			}
 			
-			if(formatFull){
-				
-				if(detail){
-					if("string" === typeof detail){
-						%><detail debug="x-string" class="code style--block"><%= formatXmlNodeValue(detail) %></detail><%
-					}else //
-					if(detail.layout){
-						= formatXmlElements("detail", detail);
-						// = this.internOutputValue("detail", detail);
-					}else{
-						%><detail debug="x-non-layout" class="code style--block"><%= formatXmlNodeValue(Format.jsDescribe(detail)) %></detail><%
-					}
+			if(detail && (formatFull || (layout.zoom !== "compact" && detail.layout))){
+				if("string" === typeof detail){
+					%><detail debug="x-string" class="code style--block"><%= formatXmlNodeValue(detail) %></detail><%
+				}else //
+				if(detail.layout){
+					= formatXmlElements("detail", detail);
+					// = this.internOutputValue("detail", detail);
+				}else{
+					%><detail debug="x-non-layout" class="code style--block"><%= formatXmlNodeValue(Format.jsDescribe(detail)) %></detail><%
 				}
+			}
+			
+			if(formatFull){
 				
 				if(layout.help || message?.help){
 					%><help src="<%= formatXmlAttributeFragment(layout.help || message?.help) %>"/><%
@@ -147,8 +148,8 @@ function makeMessageReply(context, layout){
 		code	: code,
 		xsl		: "/!/skin/skin-standard-xml/show.xsl",
 		content	: xml,
-		cache	: message.cache,
-		delay	: message.delay
+		cache	: layout.cache,
+		delay	: layout.delay
 	};
 }
 
