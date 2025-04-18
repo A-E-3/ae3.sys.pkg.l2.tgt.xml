@@ -951,6 +951,9 @@ A.ui-button, A.ui-button:focus, A.ui-button:active, A.ui-button:hover, A.ui-butt
 	background-color: #ffd;
 }
 
+.hl-MAYBE {
+	opacity: .5;
+}
 
 DIV.hl-hd-true, TR.hl-hd-true {
 	opacity: 0.6;
