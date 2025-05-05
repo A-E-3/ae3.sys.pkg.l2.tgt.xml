@@ -49,6 +49,7 @@ function makeDataViewReply(context, layout){
 					(query && formatXmlElement("client", context.share.clientElementProperties(context)) || "") +
 					makeDataViewFragment.call(
 						this,
+						context,
 						query,
 						layout, 
 						query && !query.parameters.___output && query.parameters.___all && formatXmlElement("command", {
@@ -61,7 +62,7 @@ function makeDataViewReply(context, layout){
 	};
 }
 
-function makeDataViewFragment(query, layout, extraCommands){
+function makeDataViewFragment(context, query, layout, extraCommands){
 	const fields = layout.fields;
 	if(!fields){
 		throw new Error("Field definition is required!");
@@ -71,7 +72,7 @@ function makeDataViewFragment(query, layout, extraCommands){
 		throw new Error("Field definition is empty!");
 	}
 
-	const filters = layout.filters;
+	const filters = layout.filters ?? context.layoutFilters;
 
 	const formatFull = query && query.parameters.format !== "clean";
 	
