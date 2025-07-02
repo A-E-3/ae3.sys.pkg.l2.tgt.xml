@@ -1,5 +1,5 @@
 {
-	"type" : "ae3.Package",
+	"type" : "commonjs",
 	"name" : "ae3.sys.l2.tgt.xml",
 	"description" : "AE3 L2 Media Target: XML / XML+XSL",
 	"requires" : "ae3.base"
