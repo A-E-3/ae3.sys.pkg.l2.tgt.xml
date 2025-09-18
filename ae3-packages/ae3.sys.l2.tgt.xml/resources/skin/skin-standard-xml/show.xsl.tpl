@@ -2584,7 +2584,7 @@
 
 	<xsl:template match="help">
 		<a tabindex="-1" href="{@src}" target="_blank" style="padding:0;margin:1pt;border:0">
-			<button class="ui-button" type="button" onclick="return true" onclick2="window.open(&quot;{@src}&quot;);return false;" tabindex="99998">
+			<button class="ui-button" type="button" onclick="return true" tabindex="99998">
 				<div class="ui-cmd-icon">
 					<img src="{$silk}help.png" alt="user:" class="icon"/>
 				</div>
