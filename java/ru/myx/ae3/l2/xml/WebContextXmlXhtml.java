@@ -5,7 +5,6 @@ import ru.myx.ae3.answer.ReplyAnswer;
 import ru.myx.ae3.base.Base;
 import ru.myx.ae3.base.BaseObject;
 import ru.myx.ae3.i3.TargetInterface;
-import ru.myx.ae3.i3.web.WebContextXml;
 import ru.myx.ae3.serve.ServeRequest;
 
 /** Forced-XHTML variant of WebContextXml: always attempts the server-side XSLT-rendered

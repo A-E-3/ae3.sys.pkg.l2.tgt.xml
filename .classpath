@@ -4,5 +4,6 @@
 	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
 	<classpathentry combineaccessrules="false" kind="src" path="/ae3.api"/>
 	<classpathentry combineaccessrules="false" kind="src" path="/ae3.sdk"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/ae3.sys.pkg.i3.web"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

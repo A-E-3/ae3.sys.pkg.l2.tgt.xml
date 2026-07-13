@@ -5,7 +5,6 @@ import ru.myx.ae3.answer.ReplyAnswer;
 import ru.myx.ae3.base.Base;
 import ru.myx.ae3.base.BaseObject;
 import ru.myx.ae3.i3.TargetInterface;
-import ru.myx.ae3.i3.web.WebContextXml;
 import ru.myx.ae3.serve.ServeRequest;
 
 /** Auto-detecting variant of WebContextXml, for the DEFAULT (not explicitly ___output=xml)
