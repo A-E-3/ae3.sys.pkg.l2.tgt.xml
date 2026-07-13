@@ -2,7 +2,9 @@ Name: ae3.sys.pkg.l2.tgt.xml
 Info: XML (+XSLT) Rendering output
 Requires: \
 	ae3.sdk \
-	
+	ae3.base \
+	ae3.web \
+
 Provides: \
 	ae3.pkg.tgt.xml \
 	ae3.sys.l2.tgt.xml \
