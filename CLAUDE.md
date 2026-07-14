@@ -10,7 +10,23 @@ AE3 L2 media target for XML output. Renders `LayoutEngine` output as XML, option
   - `TestXml` — manual smoke-test entry point (`main`), not part of an automated suite. Renders `LayoutEngine.getDocumentation()` (or a `.jsld` file passed as `args[0]`) to a temp XML file and opens it via `Engine.createProcess`.
   - `about.jsld` — bilingual (en/ru) "about" text, surfaced through `LayoutEngine.getDocumentation()`.
 - `ae3-packages/ae3.sys.l2.tgt.xml/` — a separate bundled AE3 runtime package (own `package.json`, `commonjs`, requires `ae3.base`) holding the rendering resources:
-  - `resources/skin/skin-standard-xml/` — full skin: XSL templates (`layout.xsl.tpl`, `show.xsl.tpl`, `showAuth.xsl.tpl`, `showState.xsl.tpl`) plus JS reply-builder helpers under `resources/lib/ae3.l2.xml/helper/` (data form/table/view/message/sequence reply builders).
+  - `resources/skin/skin-standard-xml/` — full skin. Declared abstract in `skin.settings.xml` (prototype: `skin-standard-html`, renderer: ACM.TPL, suffix `.tpl`). Contents:
+    - XSL templates (all XSLT 1.0, `output=html`, wrapped in ACM.TPL `<%FINAL:'text/xml'%><%FORMAT:'xml'%>`):
+      - `show.xsl.tpl` — main page skin. Variables: `$clean`, `$zoom` (window/document), `$standalone`, `$sudo`, `$base`, `$srot` (skin root), `$irot` (icons root). Flex page layout (`pg-root`/`pg-north`/`pg-gapc`/`pg-main`/`pg-south`). Handles menu (require.js), responsive inline styles for `$clean`, ae3 SPA modes (`client/@ae3='true'/'r'`). Named templates: `input-attributes`, `split-list` (tail-recursive comma-split), `formatted` (input type dispatch), `command`, `noscript-submenu`. Uses `disable-output-escaping` for `rawHeadData` injection.
+      - `layout.xsl.tpl` — documentation/API skin. Matches `/xml` root; renders `article`/`method`/`object`/`field` elements as HTML doc with TOC and anchor links.
+      - `showAuth.xsl.tpl` — authentication state pages: `authenticate`, `authentication-failed`, `authentication-success`, `authentication-logout`.
+      - `showState.xsl.tpl` — state-transition pages: `done` (redirect), `updated`, `success`, `failed`.
+    - `style.css.tpl` — main CSS (wrapped as `/* <%FINAL:'text/css'%><%FORMAT:'css'%><%= '/' + '*' %> */` — the `<%= '/' + '*' %>` closes the comment to avoid literal `/*` in ACM). Flex page layout classes, zoom modes, responsive breakpoints (559px/560px/800px/1280px), form/field/table styles.
+    - `$files/` — static client assets: `dates.js`, `input-label-block-visibility.js`, `menu.css`, `favicon.ico`.
+    - `layouts/` — layout interceptors (`.jso` files evaluated by the AE3 layout engine, `.jslt` for layout transforms):
+      - `DataForm.jso`, `DataTable.jso`, `DataView.jso`, `Message.jso`, `MessageUpdateSuccess.jso`, `SelectView.jso`, `Sequence.jso` — each routes its layout type to the corresponding `XmlSkinHelperSingleton.make*Reply` call (for `zoom=document`; passes through otherwise).
+      - `Xml.jslt` — CDN URI replacement: rewrites `layout.xsl` from the internal `show.xsl` path to the CDN-prefixed URI when `X-WebUI-CDN-URI` is present in the request.
+    - `skin/` — HTTP error page templates (ACM.TPL, `%OUTPUT: body%` injection into skin-standard-html parent): `401.tpl` (login form), `403.tpl`, `404.tpl`, `500.tpl`, `xml.tpl` (XML-specific wrapper). These are **not** XSLT.
+    - `skin-standard-xml.xml.tpl` — the skin descriptor (XML).
+    - `skin.settings.xml` — skin configuration: abstract, prototype=skin-standard-html, renderer=ACM.TPL.
+    - `checkShowIndex.xml.tpl`, `checkShowList.xml.tpl` — test/demo NDLS application fixtures (Network Device Licensing Server). Not part of the core skin; included as example usage of the XML+XSL skin with a real command index.
+    - `checkSubmenu.html.tpl` — legacy HTML submenu test fixture with a hardcoded JS `submenu` array structure, used to test the menu JS integration.
+  - `resources/lib/ae3.l2.xml/` — JS reply-builder library. Entry points: `helper.js` and `XmlSkinHelperSingleton.js` both export `new XmlSkinHelper()` (singleton). `XmlSkinHelper.js` is an `ae3.Class` extending `UiBasic`; all reply-builder methods use `execute:"once"` lazy-require to avoid eager loading.
   - `resources/skin/skin-standard-xml-clean/` — variant skin, no XSLT: "up reflectors/describers in XML" only (per its own `readme.txt`).
 
 ## Build
@@ -33,8 +49,98 @@ Which concrete class gets constructed for a given request is resolved by `ae3.sy
 
 `XslServerRender` (package-private, same package) holds the actual cached `Templates` lookup + transform, shared by both variants rather than one inheriting from the other or a hook method — `acceptsXhtml(query)` and `transform(xsl, xml)`. The `Templates` cache itself: `SupplierVfsFolderXslTemplatesCached` (in `ae3.sys.pkg.base`) scans `Storage.UNION.relative("resources/skin/skin-standard-xml", null)` flat (no recursion) for every `*.xsl.tpl` file, keyed by public name (`.tpl` stripped, e.g. `show.xsl.tpl` -> `show.xsl` — matching what `result.xsl` actually ends with, since the ACM.TPL serving layer drops the `.tpl` suffix from public URLs). `/union` (not `/public`) so an override sitting in a higher-priority VFS tier is picked up, not just the base package resources.
 
+## CSS class system (`style.css.tpl` ↔ `show.xsl.tpl`)
+
+`style.css.tpl` and `show.xsl.tpl` are tightly coupled through a shared class vocabulary. Class names are structural contracts — XSLT writes them, CSS styles them, and JS sometimes reads them. They are **not** BEM or utility classes; they follow a family-prefix convention described below.
+
+### Prefix families
+
+**`zoom-*`** — set on `<html>` and `<body>` at the root template:
+- `zoom-{zoom}-html` / `zoom-{zoom}-body` where zoom ∈ {window, document}
+- `zoom-window-body`: `height:100%; overflow:auto` — full-viewport scroll
+- `zoom-document-*`: centered document layout with white bg and `margin:auto`
+
+**`pg-*`** — top-level flex page structure (only in non-`$clean` mode):
+- `pg-root` — flex column, `justify-content/align-items:center`, `min-height:100%`
+- `pg-north` — full-width header slot (contains `tbar-dn`)
+- `pg-gapc` — flex spacer (1.3 ratio, min 66%)
+- `pg-main` — main content (flex 2, min 83%) — contains `ui-document-out > ui-document-in`
+- `pg-south` — full-width footer slot (contains `tbar-up`)
+- `pg-main-root/gapc/main` — inner flex sub-layout within main
+
+**`tbar-*`** — toolbar bars, all with `border:2pt solid #9ff; background:#eff; box-shadow`:
+- `tbar-dn` — page header toolbar (bottom-rounded corners, placed in `pg-north`)
+- `tbar-up` — page footer toolbar (top-rounded corners, placed in `pg-south`)
+- `tbar` — generic non-rounded bar
+
+**`ui-*`** — largest family; covers all UI components:
+- *Page structure*: `ui-document-out`, `ui-document-in`, `ui-pagetitle` (single-line ellipsis title), `ui-clear` (clearfix), `ui-secondary` (0.66 opacity, fades in on hover), `ui-blk-caption` (0.5 opacity inline-block), `ui-pagebreak`
+- *Commands/links*: `ui-cmd-icon` (float:left icon wrapper, 1.2em wide), `ui-cmd-text` (text beside icon), `ui-cmd-link` (block link, no underline), `ui-cmd-link-compact` (inline-block), `ui-cmd-link-cell`, `ui-cmd-link-group` (pipe-separated compact links via `::before`), `ui-cmd-preview-block` (indented), `ui-button` (styled button/span/a)
+- *Table wrappers*: `ui-table-screen-{zoom}` (outer box-shadow frame), `ui-table-container` (horizontal scroll + decorative checkerboard bg), `table-list`/`table-view`/`table-edit`/`table-message` (float:left inner wrappers with inset shadow)
+- *Table elements* (zoom-suffixed): `ui-list-table-{zoom}`, `ui-view-table-{zoom}`, `ui-edit-table-{zoom}`, `ui-message-table-{zoom}`, `ui-message-west-{zoom}`, `ui-message-east-{zoom}`, `ui-message-icon-{zoom}`
+- *Map widget*: `ui-map`, `ui-map-{zoom}`, `ui-map-value`, `ui-map-index-{zoom}` — compact/cell zooms collapse index and key columns into stacked text
+- *Form/field*: `ui-form-{zoom}` (on `<form>`), `ui-fldbox-{zoom}` (compact: collapsible animated span), `ui-fld-editor-textarea` (textarea for editor type), `ui-type-{type}` (on TD, e.g. `ui-type-boolean`)
+- *Select/radio UI*: `ui-select-view` (on the select-view table div)
+- *Sequence*: `ui-sequence` (custom element or div), `ui-sequence-item-compact`
+- *Message widget parts*: `ui-wg-message-title/code/text/detail`
+- *Menu*: `ui-menu-noscript` (hover-expand noscript menu), `ui-menu-ns-scrn` (zero-width until hover), `ui-menu-ctn-all` (see hl-ui below), `ui-menu-{zoom}`, `ui-menu-btn-ini` (hidden), `ui-menu-btn-btn`
+- *Labels/badges*: `ui-label` (pill badge, 0.9em, blue #00A, max-width 17em + ellipsis), `ui-left` (float:left), `ui-right` (float:right), `ui-bold`, `ui-align-center`
+- *Illustrations*: `ui-illustration`, `ui-illustration-central`, `ui-small`, `ui-medium`
+- *Accordion*: `ui-chk-master` / `ui-chk-slave` — checkbox `:checked ~ sibling` reveal pattern
+- *Misc*: `ui-hint` (cyan hint block), `ui-paragraph`, `ui-code`, `ui-code-{zoom}`, `ui-white-padding`/`ui-form-window2` (padded white boxes)
+
+**`hl-*`** — highlight / visibility (two sub-families):
+- `hl-bn-{value}` — background color, written via AVT. Two source attributes: `@hl` (list/view rows: `hl-bn-{@hl}`) and `@access` (command items: `hl-bn-{@access}`). Same CSS rules cover both:
+  - `hl-bn-none` → #FAFAFA | empty/false/public/normal → #F0FFF7 (green) | admin → #FFF5F0 (red) | disabled → #F0F0F0 + opacity .55 | inactive → #F7F7F7 + opacity .75 | local/blue → #E7FAFF | true/user/attention → #F7FFF0 | priveleged/warn0 → #ffc | warn1 → #fec | error/warn2/`hl-ERROR` → #fdd | alert/`hl-CRITICAL` → #fbb
+  - Standalone (not bn-prefixed): `hl-NORMAL` → #dfe | `hl-COLD` → #def | `hl-ATTENTION` → #ffd | `hl-MAYBE` → opacity .5
+- `hl-ui-{value}` — visibility/size, driven by `@ui` attribute on command items (`hl-ui-{@ui}`):
+  - `hl-ui-false` → `display:none` by default; revealed as `display:block` inside `DIV.ui-menu-ctn-all`
+  - `hl-ui-true`, `hl-ui-` → visible (no-op by design)
+  - `hl-ui-title` → font-size 120% | `hl-ui-small` → font-size 80%
+  - `ui-cmd-link > .hl-ui-jump` → hidden by default; visible in `ui-menu-ctn-all`
+- `hl-hd-{value}` — header/hidden rows, driven by `@hidden` attribute (`hl-hd-{@hidden}`). Only `hl-hd-true` has a CSS rule (opacity .6, display:none; revealed in `ui-menu-ctn-all`). `hl-hd-false` and `hl-hd-` are unstyled (visible by default).
+
+**`cell-tp-*`** — column type class on TD, driven by `@type` attribute of column definition:
+- `cell-tp-date` → `white-space:nowrap` | `cell-tp-number` → right-aligned, nowrap
+- `cell-tp-boolean` — uses `[x-boolean='true'/'false']` attribute selector (not a sub-class) for color: true → green #171; false → red #711 + opacity .6
+
+**`idx-box-*`** — command/index box containers by zoom: `idx-box-row`/`idx-box-cell` (block, overflow-x auto), `idx-box-compact` (inline-block). `idx-grp-cell` also appears in XSLT for group items but has **no CSS rule** — it is a class hook with no current styling.
+
+**`no-print`** / **`no-print-margin`** — print-media only (`@media print`): `no-print` → `display:none`; `no-print-margin` → `margin/padding:0`. Applied to menu buttons and the `ui-menu-btn-ini` button.
+
+**Form layout** (non-prefixed legacy names, on TD or DIV):
+- `field` — form field wrapper (right-aligned, `padding:1pt 3pt`) | `fldkey` — label cell (right-align, width:1%) | `fldval` — value cell (left-align, fit-content) | `fldcollapse` — borderless collapsed row | `submit` — submit row (right-align, blue-tinted bg, box-shadow)
+- `field-{zoom}` — zoom-specific field container (e.g. `field-compact`)
+
+**`el-*` / `st-*`** — CSS-only state machines for radio/tab selects (no JS):
+- `el-radio` — hidden `<input type="radio">` (`display:none`)
+- `LABEL.el-radio` — visible label trigger
+- `st-radio-tab` — tab-bar variant: `input:checked ~ #panel` reveals sibling by `~` combinator (XSLT emits inline `<style>` per-instance with the unique ID)
+- `st-radio-sel` — select variant with custom radio circle drawn via `::before`
+- `el-radio-tab-item` — hidden panel (`display:none`), revealed by `:checked ~`
+- `el-radio-sel-item` — collapsed panel (height:0, visibility:hidden), transitions INPUT opacity on reveal
+
+### XSLT↔CSS coupling rules
+
+1. **Zoom propagation**: `$zoom` (window/document) flows from the root template down via `<xsl:param>`. Nested components downgrade: document/window → `row` item zoom; anything else → `compact`. The class suffix `ui-list-table-row` vs `ui-list-table-compact` is the result.
+
+2. **Data-driven hl classes**: three XML attributes drive three class families via AVT — no XSLT branch logic: `@hl`/`@access` → `hl-bn-*` (background), `@hidden` → `hl-hd-*` (visibility), `@ui` → `hl-ui-*` (display). Unknown values silently no-op (no CSS rule matches).
+
+3. **`x-boolean` attribute selector**: XSLT emits `<xsl:attribute name="x-boolean">true/false</xsl:attribute>` on the value div; CSS selects `[x-boolean='true']` / `[x-boolean='false']` for color. This separates presentation logic (CSS) from value extraction (XSLT) cleanly.
+
+4. **`hl-ui-false` visibility gate**: XSLT outputs all items unconditionally; CSS hides `hl-ui-false` by default and reveals it only inside `ui-menu-ctn-all`. This is a CSS-controlled visibility gate with no XSLT branching.
+
+5. **Custom elements**: `<ui-sequence>` and `<ui-sequence-item>` are emitted as literal XML element names (not `<div class="...">`); CSS styles them via element selectors (`ui-sequence`, `ui-sequence-item`). This works because `show.xsl.tpl` uses `output method="html"` which serializes unknown element names as-is.
+
+6. **`$clean` mode inline styles**: When `$clean` is true, the XSLT injects an inline `<style>` block inside `<head>` overriding HTML/BODY padding/margin — this takes precedence over `style.css.tpl`'s rules without touching the CSS file.
+
+7. **Compound column TD class**: `class="{@id} {@extraClass} cell-tp-{@type}"` — the column's own `@id` becomes a CSS class (e.g. `class="userId ..."` for a userId column), enabling per-column styling from outside the skin. `@extraClass` is the caller-supplied escape hatch.
+
 ## Gotchas
 
 - No automated tests — `TestXml` is a manual harness only, run it directly to eyeball rendering output.
 - Two distinct "package" concepts live in this one unit: the Java target-context (built via the `compile-java` source-process) and the AE3 runtime package `ae3.sys.l2.tgt.xml` under `ae3-packages/` (built via the `ae3-packages` source-process, its own `package.json`). Don't conflate the two when navigating or changing build wiring.
+- `style.css.tpl` uses a non-obvious ACM.TPL wrapper: the file opens with `/* <%FINAL:'text/css'%><%FORMAT:'css'%><%= '/' + '*' %> */` — the `<%= '/' + '*' %>` string-concatenation produces `/*` in the output, which closes the outer CSS comment, hiding the ACM directives from CSS parsers. This is not a bug; it's intentional ACM escaping.
+- `layouts/*.jso` files are layout-engine interceptors evaluated at request time, not static JSON — they contain JS with an `onLayoutExecute(context, layout)` function. `Xml.jslt` is a layout transform (`.jslt` extension) evaluated before layout execution.
+- `checkShowIndex.xml.tpl` and `checkShowList.xml.tpl` are NDLS demo fixtures that happen to live in the skin package; they are not part of the skin infrastructure and should not be treated as authoritative examples of the skin's own XML schema.
 - `.xsl.tpl` files are wrapped in ACM.TPL directives (`<%FINAL: 'text/xml' %><%FORMAT: 'xml' %> ... <%/FORMAT%><%/FINAL%>`), which normally means the file goes through AE3's own template/execution engine (`ae3.sdk-lang.acm-tpl`, a bytecode-compiled scripting language, not plain text substitution) when served over HTTP. But `show.xsl.tpl` specifically has exactly these 4 directive tags and nothing else dynamic (verified with plain `<%`/`%>` substring counts, not just a regex, to be sure none were missed: 4 and 4, both on the file's first and last line) — so its content is 100% static XSLT. `SupplierVfsFolderXslTemplatesCached` strips these tags itself rather than running files through the ACM.TPL engine, but only for files whose name ends in `.tpl` — a plain `.xsl` file is never stripped.
