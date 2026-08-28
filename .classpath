@@ -2,8 +2,10 @@
 <classpath>
 	<classpathentry kind="src" path="java"/>
 	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+	<classpathentry kind="lib" path="/ae3.pkg.lib.util.saxon-he/jars/Saxon-HE-9.8.0-15.jar"/>
 	<classpathentry combineaccessrules="false" kind="src" path="/ae3.api"/>
 	<classpathentry combineaccessrules="false" kind="src" path="/ae3.sdk"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/ae3.sys.pkg.base"/>
 	<classpathentry combineaccessrules="false" kind="src" path="/ae3.sys.pkg.i3.web"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

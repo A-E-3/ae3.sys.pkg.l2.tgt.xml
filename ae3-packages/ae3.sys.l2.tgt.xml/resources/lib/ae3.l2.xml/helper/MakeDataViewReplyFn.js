@@ -3,6 +3,10 @@
  */
 
 const FiltersFormLayout = require("./FiltersFormLayout");
+const reduceDataViewGridPdf = require("./ReduceDataViewGridPdfFn");
+const reduceDataViewGridTxt = require("./ReduceDataViewGridTxtFn");
+const reduceDataViewGridHtml = require("./ReduceDataViewGridHtmlFn");
+const reduceDataViewGridXls = require("./ReduceDataViewGridXlsFn");
 const formatXmlAttributes = Format.xmlAttributes;
 const formatXmlElement = Format.xmlElement;
 const formatXmlElements = Format.xmlElements;
@@ -27,17 +31,17 @@ function makeDataViewReply(context, layout){
 	const query = context?.query;
 	if(query?.parameters.___output){
 		switch(query.parameters.___output){
-		case "xml":
-			return require("ae3/xml").makeDataViewReply(query, layout);
-		case "xls":
-			return require("ae3/xls").makeDataViewReply(query, layout);
-		case "txt":
-			return require("ae3/txt").makeDataViewReply(query, layout);
 		case "pdf":
-			return require("ae3/pdf").makeDataViewReply(query, layout);
+			return reduceDataViewGridPdf(layout);
+		case "txt":
+			return reduceDataViewGridTxt(layout);
+		case "html":
+			return reduceDataViewGridHtml(layout);
+		case "xls":
+			return reduceDataViewGridXls(layout);
 		}
 	}
-	
+
 	const attributes = layout.attributes ? Object.create(layout.attributes) : {};
 	attributes.layout = "view";
 	const filters = layout.filters ?? context.layoutFilters;
