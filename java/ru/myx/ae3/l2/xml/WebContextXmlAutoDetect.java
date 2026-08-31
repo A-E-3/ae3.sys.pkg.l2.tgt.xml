@@ -43,7 +43,7 @@ public class WebContextXmlAutoDetect extends WebContextXml {
 							this.getQuery(), //
 							xhtml) //
 							.setCode(Base.getInt(resultLayout, "code", 200))//
-							.setAttribute("Content-Type", "application/xhtml+xml")//
+							.setAttribute("Content-Type", "text/html")//
 							.setFinal();
 				} catch (final XslServerRender.RenderException e) {
 					// intentional silent fallback to the raw reply below - default path must degrade gracefully

@@ -5,23 +5,12 @@ import java.io.StringWriter;
 
 import javax.xml.transform.stream.StreamSource;
 
-import net.sf.saxon.Configuration;
-import net.sf.saxon.event.PipelineConfiguration;
-import net.sf.saxon.event.ProxyReceiver;
-import net.sf.saxon.event.Receiver;
-import net.sf.saxon.event.ReceiverOptions;
-import net.sf.saxon.expr.parser.Location;
-import net.sf.saxon.om.NodeName;
 import net.sf.saxon.om.StructuredQName;
-import net.sf.saxon.s9api.Processor;
-import net.sf.saxon.s9api.SaxonApiException;
 import net.sf.saxon.s9api.Serializer;
 import net.sf.saxon.s9api.XsltExecutable;
 import net.sf.saxon.s9api.XsltTransformer;
 import net.sf.saxon.serialize.CharacterMap;
 import net.sf.saxon.serialize.CharacterMapIndex;
-import net.sf.saxon.trans.XPathException;
-import net.sf.saxon.type.SimpleType;
 import net.sf.saxon.z.IntHashMap;
 
 import ru.myx.ae3.answer.Reply;
@@ -85,88 +74,6 @@ final class XslServerRender {
 		}
 	}
 
-	/** Neutralizes Saxon's {@code DISABLE_ESCAPING} events reaching the server-side serializer, so
-	 * {@code show.xsl.tpl}'s {@code disable-output-escaping="yes"} content (safe for its original
-	 * client-side XSLT consumer, unsafe for Saxon's own literal server-side serializer) becomes
-	 * well-formed XML instead: the entire raw value is unconditionally CDATA-wrapped (see
-	 * {@link #emitAsCdata}), whatever shape it is - no tag-detection/regex layer. This keeps the
-	 * output well-formed but leaves the content inert (a CDATA section's markup never executes) -
-	 * a client-side script (skin-standard-xml's {@code $files/input-label-block-visibility.js})
-	 * reconstructs and activates real {@code <script>}/{@code <style>} elements from it on page
-	 * load. Full rationale, Saxon-internals confirmation, and coupling risk: this package's
-	 * {@code MAGIC.md}. */
-	private static final class DisableEscapingNeutralizingReceiver extends ProxyReceiver {
-
-		DisableEscapingNeutralizingReceiver(final Receiver next) {
-
-			super(next);
-		}
-
-		/** Splits {@code interior} around any literal {@code "]]>"} (illegal inside a CDATA
-		 * section) and writes each piece as its own CDATA section into {@code next}, with
-		 * {@code DISABLE_ESCAPING} set throughout so {@code XMLEmitter} emits it literally. */
-		private void emitAsCdata(final CharSequence interior, final Location locationId, final int properties) throws XPathException {
-
-			final int chprop = properties | ReceiverOptions.DISABLE_ESCAPING | ReceiverOptions.DISABLE_CHARACTER_MAPS;
-			final String text = interior.toString();
-			final int length = text.length();
-			super.characters("<![CDATA[", locationId, chprop);
-			int from = 0;
-			for (int i = 0; i < length - 2; i++) {
-				if (text.charAt(i) == ']' && text.charAt(i + 1) == ']' && text.charAt(i + 2) == '>') {
-					super.characters(text.substring(from, i + 2), locationId, chprop);
-					super.characters("]]><![CDATA[", locationId, chprop);
-					from = i + 2;
-					i += 2;
-				}
-			}
-			super.characters(text.substring(from), locationId, chprop);
-			super.characters("]]>", locationId, chprop);
-		}
-
-		@Override
-		public void characters(final CharSequence chars, final Location locationId, final int properties) throws XPathException {
-
-			if ((properties & ReceiverOptions.DISABLE_ESCAPING) != 0) {
-				this.emitAsCdata(chars, locationId, properties);
-				return;
-			}
-			super.characters(chars, locationId, properties & ~ReceiverOptions.DISABLE_ESCAPING);
-		}
-
-		@Override
-		public void attribute(final NodeName nameCode, final SimpleType typeCode, final CharSequence value, final Location locationId,
-				final int properties) throws XPathException {
-
-			// attribute values can't legally hold CDATA/raw '<' - the exception above is characters()-only
-			super.attribute(nameCode, typeCode, value, locationId, properties & ~ReceiverOptions.DISABLE_ESCAPING);
-		}
-	}
-
-	/** s9api {@link Serializer} subclass that inserts {@link DisableEscapingNeutralizingReceiver}
-	 * at the head of Saxon's serialization chain; every other {@link Serializer} setting behaves
-	 * exactly as stock. Subclassing (not wrapping) is deliberate — rationale: this package's
-	 * {@code MAGIC.md}. */
-	private static final class SerializerXhtmlDisableEscapingNeutralizing extends Serializer {
-
-		SerializerXhtmlDisableEscapingNeutralizing(final Processor processor) {
-
-			super(processor);
-		}
-
-		@Override
-		public Receiver getReceiver(final Configuration config) throws SaxonApiException {
-
-			return new DisableEscapingNeutralizingReceiver(super.getReceiver(config));
-		}
-
-		@Override
-		public Receiver getReceiver(final PipelineConfiguration pipe) throws SaxonApiException {
-
-			return new DisableEscapingNeutralizingReceiver(super.getReceiver(pipe));
-		}
-	}
-
 	/** @param xsl
 	 *            result.xsl value, used to look up a scanned stylesheet by file name
 	 * @param xml
@@ -188,7 +95,11 @@ final class XslServerRender {
 				throw new RenderException("No compiled stylesheet found for key '" + key + "' (from xsl='" + xsl + "')");
 			}
 			final StringWriter writer = new StringWriter();
-			final Serializer serializer = new SerializerXhtmlDisableEscapingNeutralizing(((XsltExecutable) executable).getProcessor());
+			// disable-output-escaping content (rawHeadData's DataTables blob) is now served as
+			// text/html, where a real <script>/<style> block is exactly what's wanted - no
+			// neutralizing/CDATA-wrapping receiver needed; the stock Serializer's own XMLEmitter
+			// already emits DISABLE_ESCAPING content raw/literal, which is the correct behavior here.
+			final Serializer serializer = ((XsltExecutable) executable).getProcessor().newSerializer();
 			serializer.setOutputWriter(writer);
 			serializer.setCharacterMap(XslServerRender.nbspCharacterMapIndex);
 			serializer.setOutputProperty(Serializer.Property.USE_CHARACTER_MAPS, XslServerRender.nbspCharacterMapName.getLocalPart());
@@ -196,7 +107,7 @@ final class XslServerRender {
 			transformer.setSource(new StreamSource(new StringReader(xml)));
 			transformer.setDestination(serializer);
 			transformer.transform();
-			return writer.toString();
+			return "<!DOCTYPE html>" + writer.toString();
 		} catch (final RenderException e) {
 			throw e;
 		} catch (final Exception e) {
@@ -279,7 +190,7 @@ final class XslServerRender {
 			final String xhtml = XslServerRender.renderMessage(reply.getCode(), reply.getTitle(), body, null);
 			return Reply.string(ownerId, query, reply.getAttributes(), xhtml)//
 					.setCode(reply.getCode())//
-					.setAttribute("Content-Type", "application/xhtml+xml")//
+					.setAttribute("Content-Type", "text/html")//
 					.setFinal()//
 					.useFlags(reply.getFlags());
 		} catch (final RenderException e) {

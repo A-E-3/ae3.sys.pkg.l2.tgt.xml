@@ -302,31 +302,23 @@ be overridden directly: it is a single ~120-line method reading fields not visib
 `net.sf.saxon.serialize`. `SupplierVfsFolderXslTemplatesCachedSaxon`'s static init now registers
 this factory.
 
-**`DisableEscapingNeutralizingReceiver`'s general case, the reason it exists at all.**
-`show.xsl.tpl` (like the other `*.xsl.tpl` files here) uses `disable-output-escaping="yes"` in
-places (e.g. the DataTables `sDom` init string reaching it via `rawHeadData`) — legitimate under
-its original client-side XSLT consumer (a real browser's/libxslt's own engine, which tolerates
-it), illegitimate under Saxon's own server-side serializer, which takes it completely literally:
-the raw, unescaped characters land in the output bytes verbatim, breaking well-formedness whenever
-that raw text contains `<`/`&` (e.g. `<"tbar-up"...`). A character map cannot fix this either —
-confirmed by reading `net.sf.saxon.serialize.CharacterMapExpander`'s own `characters()`/
-`attribute()` source: it deliberately passes an already-`disable-output-escaping` event straight
-through unmodified. `DisableEscapingNeutralizingReceiver` instead clears Saxon's own
-`ReceiverOptions.DISABLE_ESCAPING` bit off every `characters()`/`attribute()` event before it
-reaches `XMLEmitter`, which then applies its ordinary well-formed-XML escaping — confirmed by
-reading `net.sf.saxon.serialize.XMLEmitter#characters`: that bit is the only thing that ever routes
-an event to the raw/unescaped branch. This is the safe default for every stylesheet
-`SupplierVfsFolderXslTemplatesCachedSaxon` compiles, matching the same "general, not one page"
-shape as the U+00A0 character-map fix above.
-
-**`SerializerXhtmlDisableEscapingNeutralizing` subclasses s9api's `Serializer` rather than wrapping
-it behind a hand-written `Destination`, deliberately.** `XsltTransformer.setDestination`
-special-cases an actual `instanceof Serializer` — applying `show.xsl.tpl`'s own `xsl:output`
-declaration and merging in the U+00A0 character map — behaviour this class must keep exactly
-as-is. Both `getReceiver` overloads are covered since `XsltTransformer`'s own
-`destination instanceof Serializer` branch (confirmed by reading its source) calls the
-`PipelineConfiguration` overload, not the `Configuration` one; only which `Receiver` the transform
-ultimately writes events into changes.
+**CORRECTION (2026-09-01) — the CDATA-wrap mechanism below (`DisableEscapingNeutralizingReceiver`,
+`SerializerXhtmlDisableEscapingNeutralizing`, and the client-side unwrap script) is removed.**
+Pages are now served as `text/html` (fixed a separate menu bug), and under HTML5 parsing
+`<![CDATA[...]]>` has no special meaning — it becomes a "bogus comment" that swallows content
+unpredictably, breaking the DataTables script loading this mechanism existed to protect
+(confirmed live: `ReferenceError: jQuery`, a stray literal `]]>` in the rendered page). Human-owner
+decision: "NO CDATA NEEDED, HTML5" — HTML5 natively supports raw embedded `<script>`/`<style>`
+blocks in server-rendered markup, unlike strict XML (the reason CDATA-wrapping existed at all), so
+`disable-output-escaping="yes"` content (the DataTables `rawHeadData` blob) can now just pass
+straight through raw/unescaped. `XslServerRender.transform` uses a stock s9api `Serializer`
+directly — no custom `Receiver`, no CDATA-wrapping, no client-side reconstruction step; Saxon's own
+`XMLEmitter` already emits `DISABLE_ESCAPING` content literally, which is exactly the desired
+behavior once the output is HTML5, not XML. `input-label-block-visibility.js`'s
+`initRawHeadDataUnwrap`/`rawHeadDataExtractBlocks`/`rawHeadDataParseAttrs`/`rawHeadDataActivateBlock`
+removed accordingly — the raw blocks are already live in the initial HTML5-parsed DOM. The whole
+history below (why the CDATA design existed, its single-block-regex predecessor, its four-block
+bugfix) is kept for archaeology only; none of that code exists in the tree anymore.
 
 **`XslServerRender.transform` prepends a minimal HTML5 doctype, and reports+throws on failure
 instead of returning null.** `show.xsl.tpl`'s own `xsl:output` declares no doctype-system, so this

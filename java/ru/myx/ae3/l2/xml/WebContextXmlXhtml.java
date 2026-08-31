@@ -48,7 +48,7 @@ public class WebContextXmlXhtml extends WebContextXml {
 							this.getQuery(), //
 							xhtml) //
 							.setCode(Base.getInt(resultLayout, "code", 200))//
-							.setAttribute("Content-Type", "application/xhtml+xml")//
+							.setAttribute("Content-Type", "text/html")//
 							.setFinal();
 				} catch (final XslServerRender.RenderException e) {
 					// explicit ___output=xhtml was requested - surface the failure loudly (styled AE3 error page), not a silent fallback; see MAGIC.md
@@ -63,7 +63,7 @@ public class WebContextXmlXhtml extends WebContextXml {
 								this.getQuery(), //
 								recovered) //
 								.setCode(500)//
-								.setAttribute("Content-Type", "application/xhtml+xml")//
+								.setAttribute("Content-Type", "text/html")//
 								.setFinal();
 					} catch (final XslServerRender.RenderException e2) {
 						// show.xsl itself unreachable/broken - last-resort hand-rolled HTML, independent of the failed pipeline
