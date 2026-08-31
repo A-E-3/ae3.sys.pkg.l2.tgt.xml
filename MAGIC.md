@@ -233,6 +233,66 @@ the overlay fix landed). `merge_dir_entries` also switched `ln -sf` → `ln -sfn
 reasoning the retired `verify-show-xsl-fix-live.sh` scratch script already carried in its own
 comment) so a directory-shaped merge entry actually replaces on collision instead of nesting.
 
+**The `data-table`/`data-form`/`data-view` layout names never reach `show.xsl.tpl` literally — a
+JS-level rename happens first, confirmed by reading the transformation helpers.**
+`ae3.sys.l2.tgt.xml/resources/lib/ae3.l2.xml/helper/Make*ReplyFn.js` rewrites `attributes.layout`
+before producing XML: `MakeDataTableReplyFn.js:72` sets it to `"list"` (content wrapped in
+`<list>`, or the reply's own `layout.rootName`, with `<columns>`/`<item>` children),
+`MakeDataFormReplyFn.js:51` sets it to `"form"`, `MakeDataViewReplyFn.js:46` sets it to `"view"`;
+`MakeSelectViewReplyFn.js:49` (`"select-view"`) and `MakeSequenceReplyFn.js:48` (`"sequence"`)
+leave the name unchanged. Every one of these replies is then served with
+`xsl: "/!/skin/skin-standard-xml/show.xsl"` — so this stylesheet's own
+`*[@layout='list'|'form'|'view'|'select-view'|'sequence'|'formatted'|'rows'|'message']` templates
+are the real rendering path for every `data-*` layout a caller (e.g. NDSS) sends. Grepping this
+stylesheet for the literal string `"data-table"`/`"data-form"`/`"data-view"` will never match —
+those names only ever exist on the JS-reply side, before this rename runs.
+
+**Open, unresolved: a genuinely invalid nested test-content shape triggers unbounded recursive
+template expansion and a real `OutOfMemoryError`; root cause not fully isolated.** Building test
+content to exercise `show.xsl.tpl` (isolated to a test-only copy of the stylesheet — production
+`show.xsl.tpl` never touched) produced a live `java.lang.OutOfMemoryError: Java heap space` from
+unbounded recursion (`NamedTemplate.expand → CallTemplate.process → Choose.processLeavingTail →
+Block.processLeavingTail → NamedTemplate.expand → ...`). Two contributing causes were found and
+removed from the test content: nesting a full `<status layout="view">` root element inside an
+unrelated table row's arbitrary child content (the generic `*[@layout='view']` template, line
+~2153, has no apparent depth guard against this shape); and using bare
+`<row><cell>...</cell></row>` children for a field's `variant="rows"` value, which collides with
+the same tag names (`row`) used by a real top-level table structure elsewhere in the same document
+(plausible template-matching ambiguity, not fully confirmed). **After removing both, a reduced
+test — only scalar/text/date/geo field variants, no table, no `rows`-variant — still hung/OOM'd.**
+Root cause for this remaining case is not isolated; this stays a genuinely open item, not resolved.
+Next step, not yet performed: check whether the fabricated `select`/`map`/`sequence`/`list`
+field-variant child shapes used in that test content (invented without checking real templates
+first) match what this stylesheet's own named templates for those variants actually expect — the
+real shapes for `sequence` etc. are now knowable from `MakeSequenceReplyFn.js` (see the
+`data-*`-to-layout-name rename note above) and should be checked against `show.xsl.tpl`'s own
+`sequence`/`select`/`map`/`list` named templates before assuming a fix.
+
+**A second, real Saxon serializer-escaping defect found and fixed (2026-08-30), separate from the
+script/style CDATA issue above.** Saxon-HE's `net.sf.saxon.serialize.HTMLEmitter` (base of
+`HTML40Emitter`/`HTML50Emitter`) unconditionally serializes character U+00A0 (NO-BREAK SPACE) as
+the literal named entity `&nbsp;` — hardcoded in `HTMLEmitter#writeEscape(CharSequence, boolean)`
+(`else if (c == 160) { writer.write("&nbsp;"); }`). Confirmed by reading Saxon-HE 9.8.0-15's own
+shipped sources (`ae3.pkg.lib.util.saxon-he/incoming/saxon-he-9.8.0-15-sources.jar`,
+`net/sf/saxon/serialize/HTMLEmitter.java:377-379`). `&nbsp;` is only a legal XML name when a DTD
+declares it; the DTD-less `application/xhtml+xml` this unit serves has none, so a real client-side
+XML parser rejects it ("Entity 'nbsp' not defined") whenever U+00A0 reaches the serializer.
+`show.xsl.tpl` itself already emits U+00A0 correctly, as the legal numeric reference `&#160;` —
+XSLT compilation resolves that to the real character before Saxon re-serializes it, so the bug is
+entirely in the serializer, not the stylesheet.
+
+Fixed in Java only, via the same `SerializerFactory.newHTMLEmitter(Properties)` extension point
+used (and reverted) above: new class `SerializerFactoryHtmlNbspFix.java` subclasses
+`net.sf.saxon.lib.SerializerFactory`, returning a small subclass of whichever stock HTML4/HTML5
+emitter Saxon would have picked, overriding `characters(...)` to intercept only U+00A0 and emit it
+via the same numeric-character-reference mechanism (`&#xA0;`) Saxon's own `writeEscape` already
+uses for other out-of-target-charset characters — every other character, and any content already
+serialized with escaping disabled (e.g. real `<script>`/`<style>` CDATA passthrough), passes
+straight through to Saxon's own stock `characters(...)` unchanged. `writeEscape` itself couldn't
+be overridden directly: it is a single ~120-line method reading fields not visible outside
+`net.sf.saxon.serialize`. `SupplierVfsFolderXslTemplatesCachedSaxon`'s static init now registers
+this factory.
+
 ## `test/ru/myx/ae3/l2/xml/TestXslTplCompile.java` — compiling the skin templates without a server
 
 Compiles every `*.xsl.tpl` under the roots it is given through the same two steps the server's own

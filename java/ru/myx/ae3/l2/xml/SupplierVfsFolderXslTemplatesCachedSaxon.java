@@ -1,12 +1,10 @@
 package ru.myx.ae3.l2.xml;
 
-import java.io.StringReader;
-
-import javax.xml.transform.Templates;
-import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.stream.StreamSource;
 
-import net.sf.saxon.TransformerFactoryImpl;
+import net.sf.saxon.s9api.Processor;
+import net.sf.saxon.s9api.XsltCompiler;
+import net.sf.saxon.s9api.XsltExecutable;
 
 import ru.myx.ae3.base.Base;
 import ru.myx.ae3.base.BaseMapEditable;
@@ -15,9 +13,9 @@ import ru.myx.ae3.util.fn.SupplierVfsFolderMapCached;
 import ru.myx.ae3.vfs.Entry;
 
 /** Same shape as {@code ru.myx.ae3.util.fn.SupplierVfsFolderXslTemplatesCached} (scans a flat VFS
- * folder for "*.xsl.tpl" resources, keeps a cached compiled {@link Templates} per file, keyed by
- * the public-facing file name with ".tpl" stripped) - except compiled with Saxon-HE
- * ({@link TransformerFactoryImpl}) instead of the JDK's bundled XSLTC
+ * folder for "*.xsl.tpl" resources, keeps a cached compiled {@link XsltExecutable} per file, keyed
+ * by the public-facing file name with ".tpl" stripped) - except compiled with Saxon-HE's own
+ * native s9api ({@link Processor}/{@link XsltCompiler}) instead of the JDK's bundled XSLTC
  * ({@code TransformerFactory.newInstance()}).
  *
  * Exists only because skin-standard-xml's own show.xsl.tpl uses a union-of-filter-expressions
@@ -26,6 +24,12 @@ import ru.myx.ae3.vfs.Entry;
  * identical construct fine, and this stylesheet has rendered correctly, unmodified, via those
  * engines for 20+ years. The original .xsl.tpl content is never changed by this class - only
  * which engine compiles the same unmodified stylesheet text.
+ *
+ * Uses s9api (not the JAXP TransformerFactory/Templates pair used here previously) specifically
+ * so {@link XslServerRender} can register a programmatic character map on the {@code Serializer}
+ * at transform time (Saxon-HE-compatible - see that class) instead of the old
+ * SerializerFactoryHtmlNbspFix Java-Emitter-subclass workaround, which only ever covered
+ * text-node content, never attribute values.
  *
  * This is the only class in this package (and the only class anywhere) with a Saxon dependency -
  * deliberately kept local to ru.myx.ae3.l2.xml rather than touching the shared, generic
@@ -36,28 +40,7 @@ import ru.myx.ae3.vfs.Entry;
  * @author myx */
 final class SupplierVfsFolderXslTemplatesCachedSaxon extends SupplierVfsFolderMapCached {
 
-	private static final TransformerFactory transformerFactory;
-
-	static {
-		/** Plain Saxon-HE "html" output method, stock SerializerFactory - no per-Configuration
-		 * override. A prior pass here (SerializerFactoryHtmlScriptStyleFix, since removed) forced
-		 * <script>/<style> text through Saxon's CDATA-style raw passthrough (DISABLE_ESCAPING) for
-		 * XHTML-namespaced elements, reasoning that it should match libxslt's/real-browsers' raw,
-		 * unescaped '&' output for that content. That reasoning was wrong for this server's actual
-		 * situation: responses render through this class are served as application/xhtml+xml, which
-		 * real browsers parse as strict XML, not HTML tag-soup - a literal '&' in character data is
-		 * only legal there escaped ('&amp;') or CDATA-wrapped, never raw. Confirmed live: a real
-		 * bare '&' in a script literal (show.xsl.tpl's ternary '?'/'&' JS string) reached the client
-		 * unescaped under the removed fix and broke Safari's real XML parser
-		 * ("xmlParseEntityRef: no name"). Stock Saxon's own behavior here - not recognizing the
-		 * XHTML-namespaced <script>/<style> elements as raw-text CDATA content (the same
-		 * elemName.hasURI("") namespace gap the removed fix targeted) - happens to already be
-		 * correct for this use case: it falls through to ordinary XML text-node escaping, i.e.
-		 * exactly one level of '&' -> '&amp;', which is what well-formed XHTML requires. No
-		 * override needed. See ae3.sys.pkg.l2.tgt.xml/MAGIC.md's 2026-08-27 entries for the full
-		 * investigation and re-verification. */
-		transformerFactory = new TransformerFactoryImpl();
-	}
+	private static final Processor processor = new Processor(false);
 
 	/** @param folder */
 	SupplierVfsFolderXslTemplatesCachedSaxon(final Entry folder) {
@@ -85,9 +68,9 @@ final class SupplierVfsFolderXslTemplatesCachedSaxon extends SupplierVfsFolderMa
 		 * of the folder's templates still compile and populate the cache normally. */
 		try {
 			final String xslt = SupplierVfsFolderXslTemplatesCachedSaxon.stripTplWrapper(entry.getTextContent().baseValue().toString());
-			final Templates templates = SupplierVfsFolderXslTemplatesCachedSaxon.transformerFactory//
-					.newTemplates(new StreamSource(new StringReader(xslt)));
-			return Base.forUnknown(templates);
+			final XsltCompiler compiler = SupplierVfsFolderXslTemplatesCachedSaxon.processor.newXsltCompiler();
+			final XsltExecutable executable = compiler.compile(new StreamSource(new java.io.StringReader(xslt)));
+			return Base.forUnknown(executable);
 		} catch (final Exception e) {
 			return null;
 		}
