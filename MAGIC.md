@@ -373,36 +373,110 @@ error page is returned instead, kept independent of the rendering pipeline that 
 so a reply is never left unanswered.
 
 **Script/style raw blocks reaching `XslServerRender`'s `DisableEscapingNeutralizingReceiver` are
-CDATA-wrapped instead of plain-escaped — Saxon's own `CDATAFilter` mechanism can't be reused for
-this, and the reason is a real coupling risk, not just a design note.** The general fix plain-escapes
-any `disable-output-escaping` content reaching this Java rendering path. One exception: a
-`characters()` event whose entire raw value is a single self-contained `<script>...</script>`/
-`<style>...</style>` block (e.g. `rawHeadData`'s real production DataTables init blob, built by
-`Ae3WebService.js`/`AcmWebService.js`, meant to become a real, live, executing `<script>` element —
-see `unit-test/magic-tester/testpages/.../RenderDoeRawHeadShare.js` for a faithful reproduction).
-Plain escaping there would make the content well-formed but permanently inert text, not a fix.
+always CDATA-wrapped whole, unconditionally — no tag-detection/regex layer — and a client-side
+script reconstructs the real elements from the CDATA text on page load (2026-08-31 fix, replacing
+the single-block-regex design below).** The general fix plain-escapes any `disable-output-escaping`
+content reaching this Java rendering path; that alone makes `rawHeadData`'s real production
+DataTables init blob (built by `Ae3WebService.js`/`AcmWebService.js`'s `prepareHtmlTable()`, reached
+via `DataTable.jso`'s `context.rawHtmlHeadData`) well-formed but permanently inert text, not a fix —
+it's meant to become real, live, executing `<script>`/`<style>` elements.
+
+An earlier version of this fix (kept here for history, since the same coupling-risk analysis still
+applies below) special-cased a `characters()` event whose entire raw value was a single
+self-contained `<script>...</script>`/`<style>...</style>` block, matched via an anchored regex
+(`RAW_TAG_WRAPPER`), and CDATA-wrapped only the interior, keeping the outer tag text raw so the
+element itself stayed live. **Found broken post-deployment (2026-08-31): the real `rawHeadData`
+payload is never a single block** — `prepareHtmlTable()` concatenates **four** raw elements into one
+`characters()` event (two library-loading `<script src="...">` tags for jQuery and
+`jquery.dataTables.min.js`, one inline init `<script>`, one `<style>` block), which the anchored
+single-block regex never matched, so the whole blob silently fell through to the plain-escaping
+default — inert text, live-confirmed via `X-Debug-Origin: WebContextXmlAutoDetect` header evidence
+on `ae3.myx.nz/monitoring/runtimeStatsLog`, a page that genuinely reaches `XslServerRender.transform`
+(unlike `preview.ndss.knt9.xyz`'s equivalent NDSS page, whose `X-Debug-Origin: LAYOUT_FINAL` reply is
+already final and short-circuits before this class is ever reached — that page's working DataTables
+rendering goes through the plain client-side-XSLT/`text/xml` path instead, a real browser's own
+XSLT engine having no single-block restriction). A human-owner design decision (two options
+presented, `show.xsl.tpl` explicitly kept off-limits for edits — "No, keep it off-limits") settled
+the real fix as: drop the regex/tag-detection layer entirely, always CDATA-wrap the whole raw value
+(single block, four blocks, anything), and move the "make it live again" responsibility to the
+client, since a CDATA section's content is delivered to the DOM as inert text regardless of what a
+server-side serializer does — no server-side mechanism can make markup inside a CDATA section
+execute, only a client-side script reading it back out can.
 
 Saxon's own stock `cdata-section-elements` mechanism (`net.sf.saxon.serialize.CDATAFilter`,
-confirmed by reading its source) can't reach this content: it decides CDATA-wrapping from real
-`startElement`/`endElement` events on its own element stack, and explicitly bypasses itself
-whenever `DISABLE_ESCAPING` is set on a `characters()` event ("if the user requests
-disable-output-escaping, this overrides the CDATA request"). This raw blob never generates real
-`<script>` start/end element events for `CDATAFilter` to key off — it arrives as one opaque,
-already-serialized string. So `DisableEscapingNeutralizingReceiver` does directly, only for that
-one recognized shape, what `CDATAFilter` does for its own case: keep the outer tag text raw, and
-wrap the interior in a real CDATA section, splitting around any literal `"]]>"` the same way
-`CDATAFilter`'s own `flushCDATA` does (a CDATA section can't contain that sequence). Deliberately
-narrow, not a general markup-sniffing parser: only fires when the entire raw value matches
-`RAW_TAG_WRAPPER` exactly (anchored both ends) — multiple sibling blocks, or any other shape (e.g.
-`@hint`'s free-form text), fall straight through to the plain-escaping default unchanged.
+confirmed by reading its source) still can't reach this content, for the same reason as before: it
+keys off real `startElement`/`endElement` events on its own element stack and explicitly bypasses
+itself whenever `DISABLE_ESCAPING` is set on a `characters()` event ("if the user requests
+disable-output-escaping, this overrides the CDATA request") — this raw blob never generates real
+element events for it to key off, arriving as one opaque, already-serialized string regardless of
+how many blocks it represents. `DisableEscapingNeutralizingReceiver.characters()` now simply calls
+`emitAsCdata` on the entire raw value whenever `DISABLE_ESCAPING` is set, full stop — the
+open-tag-raw/interior-CDATA split, the anchored regex, and the plain-escaping fallback for anything
+that didn't match are all gone; `emitAsCdata`'s own `"]]>"`-splitting logic (required by the CDATA
+XML-spec regardless of design, unchanged) is the only "loop" left.
 
-Coupling risk (flagged in review): this mechanism is correct only as long as three pieces of
-undocumented Saxon-internal behavior hold — `ReceiverOptions.DISABLE_ESCAPING`'s exact semantics,
-`CDATAFilter`'s own bypass-on-disable-escaping behavior, and `CharacterMapExpander`'s pass-through
-of already-disabled-escaping events — none of which are part of Saxon's public API contract. A
-Saxon version upgrade could change any of them with no compile-time signal; re-verify this class
-against the real captured-XML equivalence harness (see the Saxon-HE engine-swap entries above) after
-any Saxon jar bump.
+Coupling risk (flagged in review, still applies — arguably more central now, since the mechanism
+fires unconditionally instead of on one narrow matched shape): this mechanism is correct only as
+long as three pieces of undocumented Saxon-internal behavior hold — `ReceiverOptions.DISABLE_ESCAPING`'s
+exact semantics, `CDATAFilter`'s own bypass-on-disable-escaping behavior, and
+`CharacterMapExpander`'s pass-through of already-disabled-escaping events — none of which are part
+of Saxon's public API contract. A Saxon version upgrade could change any of them with no
+compile-time signal; re-verify this class against the real captured-XML equivalence harness (see the
+Saxon-HE engine-swap entries above) after any Saxon jar bump.
+
+**Client-side unwrap: `skin-standard-xml/$files/input-label-block-visibility.js`.** Since
+`show.xsl.tpl` is off-limits and there's no wrapper element around the `rawHeadData` value-of (it's
+a bare disable-output-escaping text/CDATA child of `<head>`, sibling to `<head>`'s other,
+all-element children), the unwrap script can't be targeted in by id/class or added as a new
+`<script src>` in the template. Two things make this work without either: (1) a direct
+`CDATA_SECTION_NODE` (`nodeType === 4`) child of `<head>` is an unambiguous marker — nothing else
+this template emits into `<head>` is ever a CDATA section, so no id/class is needed; (2) this file
+is one of the few `skin-standard-xml` assets already guaranteed loaded on every page the skin
+renders (via `show.xsl.tpl`'s own `initAll()`/`require.script()` bootstrap), so the new code can
+live in an existing file instead of a new one. `initRawHeadDataUnwrap()` walks `document.head`'s
+children for CDATA sections, concatenates their `.data` in document order (handles the rare
+multi-section case `emitAsCdata`'s own `"]]>"`-splitting produces), and hands the result to
+`rawHeadDataExtractBlocks` — a hand-rolled scanner, deliberately not `DOMParser`/`innerHTML`-based:
+this document may be XML (`application/xhtml+xml`), where `innerHTML`'s fragment-parsing algorithm
+enforces XML well-formedness and would choke on a bare `<` inside the inline script's own text (the
+real `sDom` value contains exactly that: `'<"tbar-up"fripl<"ui-clear">>t'`). Scanning for the
+literal closing-tag token only, ignoring any other `<` in between, matches HTML's own raw-text
+parsing rule for `<script>`/`<style>` and sidesteps the well-formedness trap entirely.
+`rawHeadDataActivateBlock` then builds each real element via `document.createElement` +
+explicit `setAttribute`/`textContent` (never `innerHTML`, which never executes a `<script>` it
+inserts), setting `async = false` on a `<script src>` so dynamically-inserted library scripts keep
+their document-order execution (jQuery before `jquery.dataTables.min.js`) instead of racing.
+
+**Verified 2026-08-31, real evidence, not just source-reading:**
+- `RenderDoeRawHeadShare.js` (`unit-test/magic-tester/testpages/`) was corrected to a byte-faithful
+  reproduction of `prepareHtmlTable()`'s real four-block output (previously only ever wrapped one
+  bare `<script>`, which is why the old gap wasn't caught — see git history/this entry's prior
+  revision for that shape).
+- Compiled the fix (`javac` into this project's own `bin/`, picked up ahead of the axiom's packaged
+  jar per `verify-ae3-web-dispatch.sh`'s own classpath assembly) and ran it against a real, isolated,
+  loopback-only local AE3 server (`unit-test/magic-tester/verify-ae3-web-dispatch.sh start`), then
+  fetched `Host: ae3-test-doe-rawhead.local` with `Accept: application/xhtml+xml` — a real `200`,
+  `Content-Type: application/xhtml+xml`, `show.xsl.tpl` used completely unmodified.
+- `xmllint --noout` on the real response body: well-formed. Python's `xml.dom.minidom` (a real XML
+  DOM parser, same CDATA-node semantics any browser's XML parser is spec-required to produce) on the
+  same body: exactly one `CDATA_SECTION_NODE` child of `<head>`, its concatenated `.data`
+  byte-identical to the original four-block source payload — the whole blob round-trips through
+  Saxon's server-side serializer with zero corruption.
+- Regression-checked `render-ok`/`render-showfail` hosts (`probe-testpages`, all five Accept-header
+  cases): unchanged `200`s, still well-formed `application/xhtml+xml` bodies — this fix's
+  unconditional CDATA-wrapping didn't visibly disturb any other `disable-output-escaping` content
+  path.
+- Ran the real, unmodified `rawHeadDataExtractBlocks`/`rawHeadDataParseAttrs`/
+  `rawHeadDataActivateBlock`/`initRawHeadDataUnwrap` functions (loaded verbatim from
+  `input-label-block-visibility.js`) through a real JavaScript engine (`jsc`, JavaScriptCore) against
+  that exact real extracted CDATA string, with a minimal DOM shim for `document.head`/
+  `createElement`/`appendChild`: all four blocks correctly identified in order (script, script,
+  script, style), correct `src` attributes, the tricky raw `<"tbar-up"` `sDom` text preserved
+  unmangled in the reconstructed inline script's `textContent`, both `<script src>` elements built
+  with `async = false`. No real browser was available in the sandbox this fix was built in (no
+  `node`/`puppeteer`/Chrome) — this is the strongest evidence achievable there; a real-browser
+  spot-check (libraries actually loading, `dataTable()` actually initializing, the `<style>` actually
+  applying visually) is still worth doing before/at release.
 
 ## `test/ru/myx/ae3/l2/xml/TestXslTplCompile.java` — compiling the skin templates without a server
 

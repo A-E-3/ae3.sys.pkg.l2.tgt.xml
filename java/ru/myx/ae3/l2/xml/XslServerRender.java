@@ -2,8 +2,6 @@ package ru.myx.ae3.l2.xml;
 
 import java.io.StringReader;
 import java.io.StringWriter;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import javax.xml.transform.stream.StreamSource;
 
@@ -90,17 +88,14 @@ final class XslServerRender {
 	/** Neutralizes Saxon's {@code DISABLE_ESCAPING} events reaching the server-side serializer, so
 	 * {@code show.xsl.tpl}'s {@code disable-output-escaping="yes"} content (safe for its original
 	 * client-side XSLT consumer, unsafe for Saxon's own literal server-side serializer) becomes
-	 * well-formed XML instead — except a single self-contained {@code <script>}/{@code <style>}
-	 * block, CDATA-wrapped so it stays live (see {@link #RAW_TAG_WRAPPER}). Full rationale,
-	 * Saxon-internals confirmation, and coupling risk: this package's {@code MAGIC.md}. */
+	 * well-formed XML instead: the entire raw value is unconditionally CDATA-wrapped (see
+	 * {@link #emitAsCdata}), whatever shape it is - no tag-detection/regex layer. This keeps the
+	 * output well-formed but leaves the content inert (a CDATA section's markup never executes) -
+	 * a client-side script (skin-standard-xml's {@code $files/input-label-block-visibility.js})
+	 * reconstructs and activates real {@code <script>}/{@code <style>} elements from it on page
+	 * load. Full rationale, Saxon-internals confirmation, and coupling risk: this package's
+	 * {@code MAGIC.md}. */
 	private static final class DisableEscapingNeutralizingReceiver extends ProxyReceiver {
-
-		/** Matches a {@code characters()} raw value that is, in its entirety, one
-		 * {@code <script ...>...</script>} or {@code <style ...>...</style>} block - group 1 is the
-		 * opening tag (kept raw), group 3 is the interior (CDATA-wrapped), group 4 is the closing
-		 * tag (kept raw). Anchored both ends: only an exact, single wrapper qualifies. */
-		private static final Pattern RAW_TAG_WRAPPER = Pattern
-				.compile("(?is)\\A\\s*(<(script|style)\\b[^>]*>)(.*)(</\\2\\s*>)\\s*\\z");
 
 		DisableEscapingNeutralizingReceiver(final Receiver next) {
 
@@ -133,13 +128,8 @@ final class XslServerRender {
 		public void characters(final CharSequence chars, final Location locationId, final int properties) throws XPathException {
 
 			if ((properties & ReceiverOptions.DISABLE_ESCAPING) != 0) {
-				final Matcher matcher = DisableEscapingNeutralizingReceiver.RAW_TAG_WRAPPER.matcher(chars);
-				if (matcher.matches()) {
-					super.characters(matcher.group(1), locationId, properties);
-					this.emitAsCdata(matcher.group(3), locationId, properties);
-					super.characters(matcher.group(4), locationId, properties);
-					return;
-				}
+				this.emitAsCdata(chars, locationId, properties);
+				return;
 			}
 			super.characters(chars, locationId, properties & ~ReceiverOptions.DISABLE_ESCAPING);
 		}
@@ -206,8 +196,7 @@ final class XslServerRender {
 			transformer.setSource(new StreamSource(new StringReader(xml)));
 			transformer.setDestination(serializer);
 			transformer.transform();
-			// show.xsl.tpl declares no doctype-system; prepend minimal HTML5 doctype to avoid quirks mode - see MAGIC.md
-			return "<!DOCTYPE html>" + writer.toString();
+			return writer.toString();
 		} catch (final RenderException e) {
 			throw e;
 		} catch (final Exception e) {
