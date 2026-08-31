@@ -16,11 +16,10 @@ public class WebContextXml extends NativeTargetContext implements WebContext<Nat
 
 	ServeRequest query;
 
-	/** Always the historic {@link NativeTargetContext.TargetMode#CLONE} - explicit ___output=xml
-	 * stays raw/unrendered by design (see WebContextXmlXhtml/WebContextXmlAutoDetect for the
-	 * {@link NativeTargetContext.TargetMode#CLONE_SKINNED} variants). Package-visible
-	 * three-argument constructor below is the seam those two subclasses use instead of
-	 * duplicating this one's behaviour.
+	/** Always {@link NativeTargetContext.TargetMode#CLONE} - explicit ___output=xml stays
+	 * raw/unrendered by design. Three-argument constructor below is the seam
+	 * WebContextXmlXhtml/WebContextXmlAutoDetect use instead; see this package's
+	 * {@code MAGIC.md}.
 	 *
 	 * @param target
 	 * @param query

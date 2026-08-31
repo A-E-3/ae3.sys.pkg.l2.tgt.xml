@@ -2,6 +2,8 @@ package ru.myx.ae3.l2.xml;
 
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.xml.transform.stream.StreamSource;
 
@@ -40,15 +42,10 @@ import ru.myx.ae3.vfs.Storage;
  * @author myx */
 final class XslServerRender {
 
-	/** compiled Templates for every "*.xsl.tpl" resource in skin-standard-xml, keyed by public
-	 * file name (".tpl" stripped, e.g. "show.xsl.tpl" -> "show.xsl") - matching what result.xsl
-	 * actually ends with. Scanned from /union (not just /public) so an override in a
-	 * higher-priority VFS tier is picked up.
-	 *
-	 * Compiled with Saxon-HE ({@link SupplierVfsFolderXslTemplatesCachedSaxon}), not the JDK's
-	 * bundled XSLTC - show.xsl.tpl uses a union-of-filter-expressions XPath idiom XSLTC's static
-	 * type-checker cannot compile; real browsers already handle the identical, unmodified
-	 * construct fine. See that class's own doc comment for the full reasoning. */
+	/** Compiled {@code *.xsl.tpl} templates for skin-standard-xml, keyed by public file name
+	 * (".tpl" stripped, e.g. "show.xsl.tpl" -> "show.xsl"). Scanned from /union so a
+	 * higher-priority VFS tier override is picked up. Compiled with Saxon-HE, not XSLTC — see
+	 * {@link SupplierVfsFolderXslTemplatesCachedSaxon}'s own doc comment. */
 	private static final SupplierVfsFolderXslTemplatesCachedSaxon xslTemplates = new SupplierVfsFolderXslTemplatesCachedSaxon(//
 			Storage.UNION.relative("resources/skin/skin-standard-xml", null));
 
@@ -90,46 +87,60 @@ final class XslServerRender {
 		}
 	}
 
-	/** {@code show.xsl.tpl} (like every other {@code *.xsl.tpl} this pipeline compiles) uses
-	 * {@code disable-output-escaping="yes"} in places (e.g. the DataTables {@code sDom} init
-	 * string reaching it via {@code rawHeadData}) - legitimate there because the only rendering
-	 * path that content has ever run through before now is a real browser's/libxslt's own
-	 * client-side XSLT engine, which tolerates it. Saxon's own server-side XML serializer instead
-	 * takes {@code disable-output-escaping} completely literally: the raw, unescaped characters
-	 * land in the output bytes verbatim, which is not well-formed XML whenever that raw text
-	 * itself contains {@code <}/{@code &} (e.g. {@code <"tbar-up"...}), breaking every
-	 * {@code application/xhtml+xml} reply that touches such content through this Java path.
-	 *
-	 * Fixing this without touching show.xsl.tpl (off limits, works fine for its only other,
-	 * client-side, consumer) means intercepting the events between the XSLT transform and
-	 * Saxon's final serializer, not the stylesheet instruction itself - same idea as the
-	 * character-map U+00A0 fix just above, but character maps are documented to skip any
-	 * text/attribute event already marked {@code disable-output-escaping} (confirmed by reading
-	 * {@code net.sf.saxon.serialize.CharacterMapExpander}'s own {@code characters()}/
-	 * {@code attribute()} source: it deliberately passes such events straight through
-	 * unmodified), so a character map alone cannot reach this content.
-	 *
-	 * {@link DisableEscapingNeutralizingReceiver} instead clears Saxon's internal
-	 * {@link ReceiverOptions#DISABLE_ESCAPING} bit off every {@code characters()}/
-	 * {@code attribute()} event before it reaches Saxon's own {@code XMLEmitter} - which, once
-	 * that bit is clear, applies its completely ordinary well-formed-XML escaping to the content,
-	 * exactly as it already does for every other text/attribute event (confirmed by reading
-	 * {@code net.sf.saxon.serialize.XMLEmitter#characters}: the {@code DISABLE_ESCAPING} bit is
-	 * the only thing that ever routes it to the raw/unescaped branch). This is deliberately
-	 * unconditional - it neutralizes the instruction for any content that reaches this Java
-	 * rendering path, for every stylesheet {@link SupplierVfsFolderXslTemplatesCachedSaxon}
-	 * compiles, not specifically the DataTables string that surfaced the bug - matching the same
-	 * "general, not one page" shape as the U+00A0 character-map fix above. */
+	/** Neutralizes Saxon's {@code DISABLE_ESCAPING} events reaching the server-side serializer, so
+	 * {@code show.xsl.tpl}'s {@code disable-output-escaping="yes"} content (safe for its original
+	 * client-side XSLT consumer, unsafe for Saxon's own literal server-side serializer) becomes
+	 * well-formed XML instead — except a single self-contained {@code <script>}/{@code <style>}
+	 * block, CDATA-wrapped so it stays live (see {@link #RAW_TAG_WRAPPER}). Full rationale,
+	 * Saxon-internals confirmation, and coupling risk: this package's {@code MAGIC.md}. */
 	private static final class DisableEscapingNeutralizingReceiver extends ProxyReceiver {
+
+		/** Matches a {@code characters()} raw value that is, in its entirety, one
+		 * {@code <script ...>...</script>} or {@code <style ...>...</style>} block - group 1 is the
+		 * opening tag (kept raw), group 3 is the interior (CDATA-wrapped), group 4 is the closing
+		 * tag (kept raw). Anchored both ends: only an exact, single wrapper qualifies. */
+		private static final Pattern RAW_TAG_WRAPPER = Pattern
+				.compile("(?is)\\A\\s*(<(script|style)\\b[^>]*>)(.*)(</\\2\\s*>)\\s*\\z");
 
 		DisableEscapingNeutralizingReceiver(final Receiver next) {
 
 			super(next);
 		}
 
+		/** Splits {@code interior} around any literal {@code "]]>"} (illegal inside a CDATA
+		 * section) and writes each piece as its own CDATA section into {@code next}, with
+		 * {@code DISABLE_ESCAPING} set throughout so {@code XMLEmitter} emits it literally. */
+		private void emitAsCdata(final CharSequence interior, final Location locationId, final int properties) throws XPathException {
+
+			final int chprop = properties | ReceiverOptions.DISABLE_ESCAPING | ReceiverOptions.DISABLE_CHARACTER_MAPS;
+			final String text = interior.toString();
+			final int length = text.length();
+			super.characters("<![CDATA[", locationId, chprop);
+			int from = 0;
+			for (int i = 0; i < length - 2; i++) {
+				if (text.charAt(i) == ']' && text.charAt(i + 1) == ']' && text.charAt(i + 2) == '>') {
+					super.characters(text.substring(from, i + 2), locationId, chprop);
+					super.characters("]]><![CDATA[", locationId, chprop);
+					from = i + 2;
+					i += 2;
+				}
+			}
+			super.characters(text.substring(from), locationId, chprop);
+			super.characters("]]>", locationId, chprop);
+		}
+
 		@Override
 		public void characters(final CharSequence chars, final Location locationId, final int properties) throws XPathException {
 
+			if ((properties & ReceiverOptions.DISABLE_ESCAPING) != 0) {
+				final Matcher matcher = DisableEscapingNeutralizingReceiver.RAW_TAG_WRAPPER.matcher(chars);
+				if (matcher.matches()) {
+					super.characters(matcher.group(1), locationId, properties);
+					this.emitAsCdata(matcher.group(3), locationId, properties);
+					super.characters(matcher.group(4), locationId, properties);
+					return;
+				}
+			}
 			super.characters(chars, locationId, properties & ~ReceiverOptions.DISABLE_ESCAPING);
 		}
 
@@ -137,23 +148,15 @@ final class XslServerRender {
 		public void attribute(final NodeName nameCode, final SimpleType typeCode, final CharSequence value, final Location locationId,
 				final int properties) throws XPathException {
 
+			// attribute values can't legally hold CDATA/raw '<' - the exception above is characters()-only
 			super.attribute(nameCode, typeCode, value, locationId, properties & ~ReceiverOptions.DISABLE_ESCAPING);
 		}
 	}
 
 	/** s9api {@link Serializer} subclass that inserts {@link DisableEscapingNeutralizingReceiver}
-	 * at the head of Saxon's own serialization receiver chain, otherwise built and configured
-	 * exactly as stock {@link Serializer} already does (both {@code getReceiver} overloads are
-	 * covered since {@link XsltTransformer}'s own {@code destination instanceof Serializer} branch
-	 * - confirmed by reading its source - calls the {@link PipelineConfiguration} overload, not
-	 * the {@link Configuration} one). Subclassing (rather than wrapping {@link Serializer} behind
-	 * a hand-written {@code Destination}) is deliberate: {@code XsltTransformer.setDestination}
-	 * special-cases an actual {@code instanceof Serializer}, applying show.xsl.tpl's own
-	 * {@code xsl:output} declaration and merging in the U+00A0 character map above - behavior this
-	 * class must keep exactly as-is, unrelated to the fix here. Only which {@link Receiver} the
-	 * transform ultimately writes events into changes; every other {@link Serializer} setting
-	 * (output writer, character map, output properties) set on an instance of this subclass in
-	 * {@link #transform(String, String)} works identically to a stock {@link Serializer}. */
+	 * at the head of Saxon's serialization chain; every other {@link Serializer} setting behaves
+	 * exactly as stock. Subclassing (not wrapping) is deliberate — rationale: this package's
+	 * {@code MAGIC.md}. */
 	private static final class SerializerXhtmlDisableEscapingNeutralizing extends Serializer {
 
 		SerializerXhtmlDisableEscapingNeutralizing(final Processor processor) {
@@ -190,9 +193,7 @@ final class XslServerRender {
 					.baseGet(key, BaseObject.UNDEFINED)//
 					.baseValue();
 			if (!(executable instanceof XsltExecutable)) {
-				// same diagnosability gap as the catch below - a lookup miss (bad key, folder
-				// scan came back empty, stylesheet not compiled) is otherwise indistinguishable
-				// from a successful-but-empty render once it silently falls back to plain xml
+				// same diagnosability gap as the catch below - must not silently fall back to plain xml
 				Report.debug("XML-XSL", "No compiled stylesheet found for key '" + key + "' (from xsl='" + xsl + "')");
 				throw new RenderException("No compiled stylesheet found for key '" + key + "' (from xsl='" + xsl + "')");
 			}
@@ -205,40 +206,20 @@ final class XslServerRender {
 			transformer.setSource(new StreamSource(new StringReader(xml)));
 			transformer.setDestination(serializer);
 			transformer.transform();
-			/** show.xsl.tpl's own xsl:output declares no doctype-system, so this server-rendered
-			 * output has none either - unlike every other reply this framework has ever served,
-			 * which always resolved to a real "html"/"htm" HtmlDomTargetContext reply carrying its
-			 * own doctype further up the chain. A doctype-less document, if a client's content
-			 * negotiation ever lands it on the text/html parser instead of the XML one, renders in
-			 * quirks mode - a rendering mode real production traffic has never actually been in.
-			 * Prepending the minimal HTML5 doctype here (valid, subset-free, and just as legal
-			 * preceding an XHTML document as an HTML one) keeps every reply through this path in
-			 * standards mode unconditionally, without touching show.xsl.tpl itself. */
+			// show.xsl.tpl declares no doctype-system; prepend minimal HTML5 doctype to avoid quirks mode - see MAGIC.md
 			return "<!DOCTYPE html>" + writer.toString();
 		} catch (final RenderException e) {
 			throw e;
 		} catch (final Exception e) {
-			/** Was a bare "return null" - every failure (missing/uncompiled stylesheet, malformed
-			 * xml, transform error) silently fell back to WebContextXml's plain text/xml reply
-			 * with zero trace of why, which is exactly what made the "?___output=xhtml silently
-			 * returns xml" symptom impossible to root-cause from outside a debugger/live
-			 * instance. Report it (same "log" idiom used elsewhere for a non-fatal skin/render
-			 * failure, e.g. SkinImpl's "SKIN-LOADER") and now also throw instead of swallowing it
-			 * outright. */
+			// was a silent "return null"; now reports (XML-XSL) and throws instead - see MAGIC.md
 			Report.exception("XML-XSL", "Server-side XSLT transform failed for '" + xsl + "'", e);
 			throw new RenderException("Server-side XSLT transform failed for '" + xsl + "'", e);
 		}
 	}
 
-	/** Builds a {@code <message layout="message" code="..." title="...">} XML document in the same
-	 * shape {@code MakeMessageReplyFn.js}'s {@code makeMessageReply(context, layout)} builds for a
-	 * {@code {layout:"message", reason, message, detail, code}} object (root element name, the
-	 * {@code layout}/{@code code}/{@code title} attributes, the unconditional {@code <reason>}
-	 * child defaulting to "Unclassified message.", the {@code <message debug="x-string"
-	 * class="code style--block">}/{@code <detail ...>} children for plain-string content), then
-	 * renders it through "show.xsl" - the one local stylesheet whose root template dispatches on
-	 * {@code @layout} and has a {@code *[@layout='message']} template - via the same
-	 * {@link #transform(String, String)} every other branch here already calls.
+	/** Builds a {@code <message layout="message">} XML document in the same shape
+	 * {@code MakeMessageReplyFn.js}'s {@code makeMessageReply} builds, then renders it through
+	 * "show.xsl". Full shape mapping: this package's {@code MAGIC.md}.
 	 *
 	 * @param code
 	 *            reply code, becomes both the {@code code} attribute and the "Code: NNN" line
@@ -275,28 +256,17 @@ final class XslServerRender {
 	}
 
 	/** @param reply
-	 *            already-resolved ReplyAnswer that {@code TargetContextAbstract.step()} stopped
-	 *            the layout walk on directly (see that method's
-	 *            {@code this.currentObject instanceof ReplyAnswer} branch) - some layout
-	 *            definition in the skin/context chain built it directly instead of going through
-	 *            the normal "message"/"final" layout resolution
+	 *            already-resolved ReplyAnswer from a layout definition that built it directly (see
+	 *            {@code TargetContextAbstract.step()}'s
+	 *            {@code this.currentObject instanceof ReplyAnswer} branch)
 	 * @param ownerId
-	 *            {@code Reply.string(...)} event owner id, normally
-	 *            {@code this.getClass().getSimpleName()}
+	 *            {@code Reply.string(...)} event owner id
 	 * @param query
 	 *            serving request, forwarded to {@code Reply.string(...)}
-	 * @return {@code reply} itself, unchanged, when it is already {@link ReplyAnswer#isFinal()
-	 *         final}, binary, a file, or a redirect (3xx) - the exact same gates
-	 *         {@code ru.myx.ae3.skinner.SkinnerAbstract#handleReply}/{@code #handleReplyOnce}
-	 *         use to decide a reply needs no further rendering, copied here verbatim since this is
-	 *         the same decision applied to the skin-standard-xml family instead of
-	 *         skin-standard-html; otherwise a new {@code application/xhtml+xml} reply carrying the
-	 *         same code, the same attributes ({@code reply.getAttributes()} passed straight into
-	 *         {@code Reply.string(...)}) and the same flags ({@code useFlags(reply.getFlags())}) as
-	 *         {@code reply}, with a body built from {@code reply}'s own title/body - extracted the
-	 *         same way {@code SkinnerAbstract.handleReplyOnce} extracts title/body from a
-	 *         textual/empty/exotic-object reply - through
-	 *         {@link #renderMessage(int, String, CharSequence, CharSequence)} */
+	 * @return {@code reply} unchanged when already final/binary/file/redirect; otherwise a new
+	 *         {@code application/xhtml+xml} reply rendered via
+	 *         {@link #renderMessage(int, String, CharSequence, CharSequence)}. Full gating and
+	 *         copying rationale: this package's {@code MAGIC.md}. */
 	static ReplyAnswer renderReplyIfNeeded(final ReplyAnswer reply, final String ownerId, final ServeRequest query) {
 
 		if (reply.isFinal() || reply.isBinary() || reply.isFile() || reply.getCode() / 100 == 3) {

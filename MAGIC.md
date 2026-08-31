@@ -135,6 +135,15 @@ type-checker cannot compile `show.xsl.tpl`'s union-of-filter-expressions XPath i
 `XslServerRender` now looks up `Templates` from that class. `show.xsl.tpl` itself is never modified —
 only which engine compiles the same unmodified stylesheet text.
 
+**`SupplierVfsFolderXslTemplatesCachedSaxon` uses Saxon's native s9api (`Processor`/
+`XsltCompiler`), not the JAXP `TransformerFactory`/`Templates` pair used elsewhere, and is
+deliberately the only Saxon-dependent class in this package.** s9api is what lets
+`XslServerRender` build its `SerializerXhtmlDisableEscapingNeutralizing`/character-map pipeline at
+transform time. The Saxon dependency stays local to `ru.myx.ae3.l2.xml` rather than touching the
+shared, generic `ru.myx.ae3.util.fn.SupplierVfsFolderXslTemplatesCached` (JDK XSLTC, used
+elsewhere) or any other `TransformerFactory` call site (e.g. acm-base-sdk's
+`AcmXsltLanguageImpl`, a separate, untouched mechanism).
+
 A real human-owner-mandated equivalence proof (real captured production XML, the same regenerated
 stylesheet, Saxon output vs. `xsltproc`/libxslt as a disclosed real-Safari-automation substitute)
 found one substantive divergence, not cosmetic: inside inline `<script>` blocks, Saxon emitted
@@ -292,6 +301,108 @@ straight through to Saxon's own stock `characters(...)` unchanged. `writeEscape`
 be overridden directly: it is a single ~120-line method reading fields not visible outside
 `net.sf.saxon.serialize`. `SupplierVfsFolderXslTemplatesCachedSaxon`'s static init now registers
 this factory.
+
+**`DisableEscapingNeutralizingReceiver`'s general case, the reason it exists at all.**
+`show.xsl.tpl` (like the other `*.xsl.tpl` files here) uses `disable-output-escaping="yes"` in
+places (e.g. the DataTables `sDom` init string reaching it via `rawHeadData`) — legitimate under
+its original client-side XSLT consumer (a real browser's/libxslt's own engine, which tolerates
+it), illegitimate under Saxon's own server-side serializer, which takes it completely literally:
+the raw, unescaped characters land in the output bytes verbatim, breaking well-formedness whenever
+that raw text contains `<`/`&` (e.g. `<"tbar-up"...`). A character map cannot fix this either —
+confirmed by reading `net.sf.saxon.serialize.CharacterMapExpander`'s own `characters()`/
+`attribute()` source: it deliberately passes an already-`disable-output-escaping` event straight
+through unmodified. `DisableEscapingNeutralizingReceiver` instead clears Saxon's own
+`ReceiverOptions.DISABLE_ESCAPING` bit off every `characters()`/`attribute()` event before it
+reaches `XMLEmitter`, which then applies its ordinary well-formed-XML escaping — confirmed by
+reading `net.sf.saxon.serialize.XMLEmitter#characters`: that bit is the only thing that ever routes
+an event to the raw/unescaped branch. This is the safe default for every stylesheet
+`SupplierVfsFolderXslTemplatesCachedSaxon` compiles, matching the same "general, not one page"
+shape as the U+00A0 character-map fix above.
+
+**`SerializerXhtmlDisableEscapingNeutralizing` subclasses s9api's `Serializer` rather than wrapping
+it behind a hand-written `Destination`, deliberately.** `XsltTransformer.setDestination`
+special-cases an actual `instanceof Serializer` — applying `show.xsl.tpl`'s own `xsl:output`
+declaration and merging in the U+00A0 character map — behaviour this class must keep exactly
+as-is. Both `getReceiver` overloads are covered since `XsltTransformer`'s own
+`destination instanceof Serializer` branch (confirmed by reading its source) calls the
+`PipelineConfiguration` overload, not the `Configuration` one; only which `Receiver` the transform
+ultimately writes events into changes.
+
+**`XslServerRender.transform` prepends a minimal HTML5 doctype, and reports+throws on failure
+instead of returning null.** `show.xsl.tpl`'s own `xsl:output` declares no doctype-system, so this
+server-rendered output has none either — unlike every other reply this framework has served, which
+resolved to a real `html`/`htm` `HtmlDomTargetContext` reply carrying its own doctype further up
+the chain. A doctype-less document, if content negotiation ever lands it on the `text/html` parser
+instead of the XML one, renders in quirks mode — a mode real production traffic has never actually
+been in — so `transform` prepends `<!DOCTYPE html>` (valid, subset-free, legal preceding an XHTML
+document same as an HTML one) to keep every reply through this path in standards mode
+unconditionally. Failure handling was a bare `return null`: every failure (missing/uncompiled
+stylesheet, malformed xml, transform error) silently fell back to `WebContextXml`'s plain text/xml
+reply with zero trace of why, which made the "`?___output=xhtml` silently returns xml" symptom
+impossible to root-cause. `transform` now reports it (same `Report.exception`/`Report.debug` idiom
+used elsewhere, e.g. `SkinImpl`'s `SKIN-LOADER`) and throws `RenderException` instead of swallowing
+it.
+
+**`renderMessage`/`renderReplyIfNeeded` render a styled AE3 error/message page through `show.xsl`
+instead of forwarding a reply unrendered.** `renderMessage` builds a
+`<message layout="message" code="..." title="...">` XML document in the same shape
+`MakeMessageReplyFn.js`'s `makeMessageReply(context, layout)` builds for a
+`{layout:"message", reason, message, detail, code}` object (root element name, the
+`layout`/`code`/`title` attributes, the unconditional `<reason>` child defaulting to "Unclassified
+message.", the `<message debug="x-string" class="code style--block">`/`<detail ...>` children for
+plain-string content), then renders it through "show.xsl" — the one local stylesheet whose root
+template dispatches on `@layout` and has a `*[@layout='message']` template. `renderReplyIfNeeded`
+returns a `ReplyAnswer` unchanged when it is already final, binary, a file, or a redirect (3xx) —
+the exact same gates `ru.myx.ae3.skinner.SkinnerAbstract#handleReply`/`#handleReplyOnce` use to
+decide a reply needs no further rendering, copied here verbatim since this is the same decision
+applied to the skin-standard-xml family instead of skin-standard-html — otherwise it builds a new
+`application/xhtml+xml` reply carrying the same code, attributes, and flags as the original, with a
+body extracted the same way `SkinnerAbstract.handleReplyOnce` extracts title/body from a
+textual/empty/exotic-object reply, rendered via `renderMessage`.
+
+**`WebContextXmlXhtml`'s render-failure handling has two fallback tiers, both deliberate.** An
+explicit `___output=xhtml` request was deliberately asked for, so a `RenderException` from
+`XslServerRender.transform` surfaces loudly instead of silently degrading to the client-side-XSLT/
+text/xml reply (that silent fallback is `WebContextXmlAutoDetect`'s job, for the implicit/default
+path only) — rendered through the same real message-layout → show.xsl path
+`Share.js`/`UiBasic.js`'s `makeServerFailureLayout` → `MakeMessageReplyFn.js`'s `makeMessageReply`
+→ `show.xsl.tpl`'s `*[@layout='message']` template already uses for a genuine styled AE3 error
+page, built synchronously via `renderMessage`, no exception thrown. If `show.xsl` itself is
+unreachable/broken (the inner `renderMessage` call throws too), a last-resort hand-rolled HTML
+error page is returned instead, kept independent of the rendering pipeline that just failed twice
+so a reply is never left unanswered.
+
+**Script/style raw blocks reaching `XslServerRender`'s `DisableEscapingNeutralizingReceiver` are
+CDATA-wrapped instead of plain-escaped — Saxon's own `CDATAFilter` mechanism can't be reused for
+this, and the reason is a real coupling risk, not just a design note.** The general fix plain-escapes
+any `disable-output-escaping` content reaching this Java rendering path. One exception: a
+`characters()` event whose entire raw value is a single self-contained `<script>...</script>`/
+`<style>...</style>` block (e.g. `rawHeadData`'s real production DataTables init blob, built by
+`Ae3WebService.js`/`AcmWebService.js`, meant to become a real, live, executing `<script>` element —
+see `unit-test/magic-tester/testpages/.../RenderDoeRawHeadShare.js` for a faithful reproduction).
+Plain escaping there would make the content well-formed but permanently inert text, not a fix.
+
+Saxon's own stock `cdata-section-elements` mechanism (`net.sf.saxon.serialize.CDATAFilter`,
+confirmed by reading its source) can't reach this content: it decides CDATA-wrapping from real
+`startElement`/`endElement` events on its own element stack, and explicitly bypasses itself
+whenever `DISABLE_ESCAPING` is set on a `characters()` event ("if the user requests
+disable-output-escaping, this overrides the CDATA request"). This raw blob never generates real
+`<script>` start/end element events for `CDATAFilter` to key off — it arrives as one opaque,
+already-serialized string. So `DisableEscapingNeutralizingReceiver` does directly, only for that
+one recognized shape, what `CDATAFilter` does for its own case: keep the outer tag text raw, and
+wrap the interior in a real CDATA section, splitting around any literal `"]]>"` the same way
+`CDATAFilter`'s own `flushCDATA` does (a CDATA section can't contain that sequence). Deliberately
+narrow, not a general markup-sniffing parser: only fires when the entire raw value matches
+`RAW_TAG_WRAPPER` exactly (anchored both ends) — multiple sibling blocks, or any other shape (e.g.
+`@hint`'s free-form text), fall straight through to the plain-escaping default unchanged.
+
+Coupling risk (flagged in review): this mechanism is correct only as long as three pieces of
+undocumented Saxon-internal behavior hold — `ReceiverOptions.DISABLE_ESCAPING`'s exact semantics,
+`CDATAFilter`'s own bypass-on-disable-escaping behavior, and `CharacterMapExpander`'s pass-through
+of already-disabled-escaping events — none of which are part of Saxon's public API contract. A
+Saxon version upgrade could change any of them with no compile-time signal; re-verify this class
+against the real captured-XML equivalence harness (see the Saxon-HE engine-swap entries above) after
+any Saxon jar bump.
 
 ## `test/ru/myx/ae3/l2/xml/TestXslTplCompile.java` — compiling the skin templates without a server
 

@@ -17,35 +17,11 @@ import javax.xml.transform.stream.StreamSource;
 
 import net.sf.saxon.TransformerFactoryImpl;
 
-/** Pre-deploy local check: compiles every "*.xsl.tpl" under the given roots exactly the way the
- * running server compiles them, and fails the run when any of them does not compile.
- *
- * The server does that compile lazily, on the first request that needs the skin
- * (SupplierMapAbstractCached.get -> SupplierVfsFolderMapCached.checkReload ->
- * SupplierVfsFolderXslTemplatesCachedSaxon.runDescriptorMapper), so nothing before deploy ever
- * exercised it and a broken stylesheet was reachable only as a live HTTP 500. This is that
- * exercise, on a laptop, with no build step and no server.
- *
- * Same path as runDescriptorMapper, deliberately: strip the ACM.TPL bookend, then compile with
- * Saxon-HE's own TransformerFactoryImpl - not the JDK's bundled XSLTC, not the net.sf.saxon.Transform
- * CLI. runDescriptorFilter's own rule is mirrored too: a resource counts only when its lower-cased
- * name ends ".xsl.tpl". Should the runtime ever go back to the JDK's XSLTC
- * (ru.myx.ae3.util.fn.SupplierVfsFolderXslTemplatesCached), this file follows it.
- *
- * Run from this repo's own root, no compilation needed:
- *
- * <pre>
- * java -cp ../../lib/lib.saxonica-saxon-he/jars/Saxon-HE-9.8.0-15.jar \
- *      test/ru/myx/ae3/l2/xml/TestXslTplCompile.java
- * </pre>
- *
- * Exit status: 0 every stylesheet compiled, 1 at least one did not, 2 the check itself is not
- * trustworthy - its own controls failed, or its stripTplWrapper copy could not be checked against
- * the tracked original it was copied from.
- *
- * Nothing compiles this file: the distro source-process stage compiles only a project's own java/
- * directory, and this repo's .classpath carries no "test" source entry. Adding one would make
- * Eclipse compile this class against a project classpath holding no Saxon jar.
+/** Pre-deploy local check: compiles every "*.xsl.tpl" under the given roots the way the running
+ * server compiles them (same path as
+ * {@code SupplierVfsFolderXslTemplatesCachedSaxon.runDescriptorMapper}), and fails the run when
+ * any of them does not compile. Full rationale, run command, and exit-status meaning: this
+ * package's {@code MAGIC.md}.
  *
  * @author magic-tester */
 public final class TestXslTplCompile {
@@ -240,11 +216,8 @@ public final class TestXslTplCompile {
 		return text.substring(from, to + TestXslTplCompile.METHOD_CLOSE.length());
 	}
 
-	/** Decodes the same way AE3's own VFS does when the server reads these resources - UTF-8, and
-	 * lenient, so a malformed byte becomes U+FFFD and the file still reaches the compiler exactly
-	 * as it would in production. Files.readString is strict and would turn a servable file into an
-	 * IOException instead of a real verdict. A UTF-8 BOM is deliberately left in place: it survives
-	 * trim() on the server too, and is rejected there too.
+	/** Decodes the same way AE3's own VFS does - UTF-8, lenient. Rationale: this package's
+	 * {@code MAGIC.md}.
 	 *
 	 * @param source
 	 * @return file text
@@ -272,10 +245,8 @@ public final class TestXslTplCompile {
 		return targets;
 	}
 
-	/** Copied verbatim from SupplierVfsFolderXslTemplatesCachedSaxon, itself identical to
-	 * ru.myx.ae3.util.fn.SupplierVfsFolderXslTemplatesCached's own - a re-implementation here would
-	 * be free to drift from the one the server actually runs, invisibly. runOwnControls checks this
-	 * copy against that tracked original on every run.
+	/** Copied verbatim from SupplierVfsFolderXslTemplatesCachedSaxon; runOwnControls checks this
+	 * copy against the tracked original on every run. Rationale: this package's {@code MAGIC.md}.
 	 *
 	 * @param source
 	 * @return stylesheet text

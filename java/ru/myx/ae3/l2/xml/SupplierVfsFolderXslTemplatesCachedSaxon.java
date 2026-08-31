@@ -12,30 +12,12 @@ import ru.myx.ae3.base.BaseObject;
 import ru.myx.ae3.util.fn.SupplierVfsFolderMapCached;
 import ru.myx.ae3.vfs.Entry;
 
-/** Same shape as {@code ru.myx.ae3.util.fn.SupplierVfsFolderXslTemplatesCached} (scans a flat VFS
- * folder for "*.xsl.tpl" resources, keeps a cached compiled {@link XsltExecutable} per file, keyed
- * by the public-facing file name with ".tpl" stripped) - except compiled with Saxon-HE's own
- * native s9api ({@link Processor}/{@link XsltCompiler}) instead of the JDK's bundled XSLTC
- * ({@code TransformerFactory.newInstance()}).
- *
- * Exists only because skin-standard-xml's own show.xsl.tpl uses a union-of-filter-expressions
- * XPath idiom that JDK XSLTC's static type-checker cannot compile - a genuine XSLTC limitation,
- * not a defect in the stylesheet; real browsers' client-side XSLT engines already handle the
- * identical construct fine, and this stylesheet has rendered correctly, unmodified, via those
- * engines for 20+ years. The original .xsl.tpl content is never changed by this class - only
- * which engine compiles the same unmodified stylesheet text.
- *
- * Uses s9api (not the JAXP TransformerFactory/Templates pair used here previously) specifically
- * so {@link XslServerRender} can register a programmatic character map on the {@code Serializer}
- * at transform time (Saxon-HE-compatible - see that class) instead of the old
- * SerializerFactoryHtmlNbspFix Java-Emitter-subclass workaround, which only ever covered
- * text-node content, never attribute values.
- *
- * This is the only class in this package (and the only class anywhere) with a Saxon dependency -
- * deliberately kept local to ru.myx.ae3.l2.xml rather than touching the shared, generic
- * {@code ru.myx.ae3.util.fn.SupplierVfsFolderXslTemplatesCached} (JDK XSLTC, used elsewhere) or
- * any other TransformerFactory call site (e.g. acm-base-sdk's AcmXsltLanguageImpl, a separate,
- * untouched mechanism).
+/** Same shape as {@code ru.myx.ae3.util.fn.SupplierVfsFolderXslTemplatesCached} (scans
+ * skin-standard-xml's flat VFS folder for "*.xsl.tpl", caches a compiled {@link XsltExecutable}
+ * per file, keyed by public file name with ".tpl" stripped), but compiled via Saxon-HE's own
+ * s9api ({@link Processor}/{@link XsltCompiler}) instead of the JDK's bundled XSLTC, which cannot
+ * compile show.xsl.tpl's union-of-filter-expressions XPath idiom. The only Saxon-dependent class
+ * in this package. Full rationale: this package's {@code MAGIC.md}.
  *
  * @author myx */
 final class SupplierVfsFolderXslTemplatesCachedSaxon extends SupplierVfsFolderMapCached {
@@ -61,11 +43,7 @@ final class SupplierVfsFolderXslTemplatesCachedSaxon extends SupplierVfsFolderMa
 	@Override
 	protected BaseObject runDescriptorMapper(final Entry entry, final String name) {
 
-		/** One file's compile failure must not poison the whole folder's cache build - skip just
-		 * this entry (matching WebContextOutputRegistry.runDescriptorMapper's per-entry-failure
-		 * handling, adapted to this hierarchy's own "return null when not accepted" convention,
-		 * see SupplierVfsFolderMapCached#checkReload / SupplierVfsFolderSettingsCached). The rest
-		 * of the folder's templates still compile and populate the cache normally. */
+		// one file's compile failure must not poison the whole folder - skip just this entry, return null
 		try {
 			final String xslt = SupplierVfsFolderXslTemplatesCachedSaxon.stripTplWrapper(entry.getTextContent().baseValue().toString());
 			final XsltCompiler compiler = SupplierVfsFolderXslTemplatesCachedSaxon.processor.newXsltCompiler();
@@ -96,10 +74,9 @@ final class SupplierVfsFolderXslTemplatesCachedSaxon extends SupplierVfsFolderMa
 		return null;
 	}
 
-	/** Identical to {@code ru.myx.ae3.util.fn.SupplierVfsFolderXslTemplatesCached}'s own
-	 * stripTplWrapper - ".tpl" resources are wrapped in ACM.TPL directive tags (e.g. <%FINAL:
-	 * '...' %><%FORMAT: '...' %> ... <%/FORMAT%><%/FINAL%>); stripping any number of leading
-	 * "<%...%>" and trailing "<%/...%>" tags recovers the raw stylesheet.
+	/** Identical to {@code SupplierVfsFolderXslTemplatesCached}'s own stripTplWrapper: strips
+	 * leading/trailing ACM.TPL directive tags (e.g. {@code <%FINAL:'...'%>...<%/FINAL%>}) to
+	 * recover the raw stylesheet.
 	 *
 	 * @param source
 	 * @return stylesheet text
