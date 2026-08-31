@@ -69,15 +69,18 @@ public class WebContextXml extends NativeTargetContext implements WebContext<Nat
 						.setAttribute("Content-Type", "text/xml")//
 						.setFinal();
 			}
-			if ("final".equals(layout) && "text/xml".equals(Base.getString(this.result, "type", ""))) {
-				final int code = Base.getInt(this.result, "code", 200);
-				return Reply.string(
-						this.getClass().getSimpleName(), //
-						this.query,
-						Base.getString(this.result, "content", "<none/>")) //
-						.setCode(code)//
-						.setAttribute("Content-Type", "text/xml")//
-						.setFinal();
+			if ("final".equals(layout)) {
+				final String type = Base.getString(this.result, "type", "").trim();
+				if (type.length() > 0) {
+					final int code = Base.getInt(this.result, "code", 200);
+					return Reply.string(
+							this.getClass().getSimpleName(), //
+							this.query,
+							Base.getString(this.result, "content", "<none/>")) //
+							.setCode(code)//
+							.setAttribute("Content-Type", type)//
+							.setFinal();
+				}
 			}
 		}
 		final TransferCopier binary = Xml.toXmlBinary("layout", this.result, true, null, null, 0);
