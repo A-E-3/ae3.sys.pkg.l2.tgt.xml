@@ -44,8 +44,6 @@ function makeDataTableReply(context, layout){
 	const query = context?.query;
 	if(query?.parameters.___output){
 		switch(query.parameters.___output){
-		case "xml":
-			return require("ae3/xml").makeDataTableReply(query, layout);
 		case "xls":
 			return require("ae3/xls").makeDataTableReply(query, layout);
 		case "txt":

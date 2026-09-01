@@ -8,6 +8,7 @@ import ru.myx.ae3.binary.TransferCopier;
 import ru.myx.ae3.i3.TargetInterface;
 import ru.myx.ae3.i3.web.WebContext;
 import ru.myx.ae3.l2.NativeTargetContext;
+import ru.myx.ae3.l2.skin.Skin;
 import ru.myx.ae3.serve.ServeRequest;
 import ru.myx.ae3.xml.Xml;
 
@@ -16,14 +17,8 @@ public class WebContextXml extends NativeTargetContext implements WebContext<Nat
 
 	ServeRequest query;
 
-	/** Always {@link NativeTargetContext.TargetMode#CLONE} - explicit ___output=xml stays
-	 * raw/unrendered by design. Three-argument constructor below is the seam
-	 * WebContextXmlXhtml/WebContextXmlAutoDetect use instead; see this package's
-	 * {@code MAGIC.md}.
-	 *
-	 * @param target
-	 * @param query
-	 */
+	/** @param target
+	 * @param query */
 	public WebContextXml(final TargetInterface target, final ServeRequest query) {
 
 		this(target, query, NativeTargetContext.TargetMode.CLONE);
@@ -42,6 +37,31 @@ public class WebContextXml extends NativeTargetContext implements WebContext<Nat
 	public ServeRequest getQuery() {
 
 		return this.query;
+	}
+
+	/** Gives CLONE the same skin-driven reduction CLONE_SKINNED already has, so app-level layouts
+	 * (e.g. "data-table") still reach the {@code {layout:"xml", xsl,...}} sentinel under explicit
+	 * ___output=xml. Other modes defer to {@code super.onNest(...)} unchanged.
+	 *
+	 * @param target
+	 * @param layout
+	 * @return */
+	@Override
+	public BaseObject onNest(final NativeTargetContext target, final BaseObject layout) {
+
+		if (this.targetMode == NativeTargetContext.TargetMode.CLONE) {
+			final String name = Base.getString(layout, "layout", "").trim();
+			if (!"xml".equals(name) && !"final".equals(name)) {
+				for (Skin skin = this.getSkin(); skin != null; skin = skin.getSkinParent()) {
+					if (skin.getLayoutDefinition(name) != null) {
+						return layout;
+					}
+				}
+			}
+			this.result = layout;
+			return null;
+		}
+		return super.onNest(target, layout);
 	}
 
 	@Override

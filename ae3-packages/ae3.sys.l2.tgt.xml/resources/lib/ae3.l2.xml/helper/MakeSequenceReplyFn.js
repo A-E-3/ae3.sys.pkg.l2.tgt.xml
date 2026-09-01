@@ -24,8 +24,6 @@ function makeSequenceReply(context, layout){
 	const query = context?.query;
 	if(query?.parameters.___output){
 		switch(query.parameters.___output){
-		case "xml":
-			return require("ae3/xml").makeDataFormReply(query, layout);
 		case "xls":
 			return require("ae3/xls").makeDataViewReply(query, layout);
 		case "txt":
