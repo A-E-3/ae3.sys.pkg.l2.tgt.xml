@@ -103,6 +103,8 @@ final class XslServerRender {
 			serializer.setOutputWriter(writer);
 			serializer.setCharacterMap(XslServerRender.nbspCharacterMapIndex);
 			serializer.setOutputProperty(Serializer.Property.USE_CHARACTER_MAPS, XslServerRender.nbspCharacterMapName.getLocalPart());
+			serializer.setOutputProperty(Serializer.Property.METHOD, "xhtml");
+			serializer.setOutputProperty(Serializer.Property.OMIT_XML_DECLARATION, "yes");
 			final XsltTransformer transformer = ((XsltExecutable) executable).load();
 			transformer.setSource(new StreamSource(new StringReader(xml)));
 			transformer.setDestination(serializer);
