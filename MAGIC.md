@@ -478,6 +478,12 @@ their document-order execution (jQuery before `jquery.dataTables.min.js`) instea
 
 **Flagged conflict, not resolved here**: this file's own entries above, and `CLAUDE.md`'s `## Gotchas` section, document `show.xsl.tpl` as owned by `keeper-acm` and permanently off-limits to edit — including a recorded human-owner decision to keep it off-limits. The approved fix above edits this same file's line 9. Recorded as-is, per the approving instruction; not resolved in either direction here.
 
+**Both parts of that fix are landed** (`show.xsl.tpl:9` is `<xsl:output method="html" indent="no"/>`; `XslServerRender` sets the two serializer properties in Java).
+
+**The Saxon `Serializer`'s `METHOD` property must be `"html"`, never `"xhtml"`, while these replies are served `text/html`.** Every server-rendered path here sets `Content-Type: text/html` (`WebContextXmlXhtml`, `WebContextXmlAutoDetect`, `XslServerRender.renderReplyIfNeeded`). Saxon's `method="xhtml"` escapes `<script>`/`<style>` text as XML; `method="html"` emits it raw, per HTML's own CDATA content model for those two elements. `show.xsl.tpl` carries real JavaScript with raw `&&` operators inside `<script><![CDATA[...]]>` blocks (`window.Effects && Effects.Busy && ...`, `ob.waiting && !ob.progress && ...`) and a `'&amp;'` source token at line 176 that parses to a bare `&` — under `xhtml` these serialize as `&amp;&amp;`/`&amp;`, and a browser parsing the reply as HTML never resolves entity references inside `<script>`, so the JS engine receives the literal entity text and the whole block dies with a syntax error. The page still returns 200 with complete markup, which is what makes this fail quietly. The `"xhtml"` value came from the 2026-09-01 approved fix above, written while this path still replied `application/xhtml+xml`; its own motivation (void-element self-closing) buys nothing under HTML5 parsing, where a trailing slash on a void element is ignored either way.
+
+The `nbsp-fix` character map stays load-bearing under `method="html"`: Saxon's `HTMLEmitter` hardcodes U+00A0 to the literal `&nbsp;`, and the map intercepts it to `&#160;` before the emitter sees it. `OMIT_XML_DECLARATION` is inert under `method="html"` — `HTMLEmitter` writes no XML declaration regardless — and is kept only so the property set stays explicit rather than depending on the stylesheet's own `xsl:output`.
+
 ## `test/ru/myx/ae3/l2/xml/TestXslTplCompile.java` — compiling the skin templates without a server
 
 Compiles every `*.xsl.tpl` under the roots it is given through the same two steps the server's own
@@ -524,6 +530,122 @@ source root also keeps the production siblings off the launcher's source path.
 checkout and in every built-axiom copy. Stripped-text line numbers equal file line numbers here,
 since the ACM.TPL bookend is a single prefix on line 1. Not fixed: that file is off-limits.
 
+**CORRECTION (2026-09-01, later same day) — the claim directly above is now stale; re-running the
+check just now against this same checkout's live sources (no root args, i.e. exactly the "these
+sources" case the claim above describes) reports a clean compile:**
+```
+OK    ./ae3-packages/ae3.sys.l2.tgt.xml/resources/skin/skin-standard-xml/layout.xsl.tpl
+OK    ./ae3-packages/ae3.sys.l2.tgt.xml/resources/skin/skin-standard-xml/show.xsl.tpl (8 warnings)
+OK    ./ae3-packages/ae3.sys.l2.tgt.xml/resources/skin/skin-standard-xml/showAuth.xsl.tpl
+OK    ./ae3-packages/ae3.sys.l2.tgt.xml/resources/skin/skin-standard-xml/showState.xsl.tpl
+---- 4 checked, 0 failed, engine net.sf.saxon.TransformerFactoryImpl
+```
+`show.xsl.tpl` on disk now (`resources/skin/skin-standard-xml/show.xsl.tpl`) carries an `Sep 1 14:58`
+mtime, after whatever earlier state the two-`XPST0008` claim described — something changed the file's
+compile outcome since that entry was written (root cause not chased down here: could be the file
+itself, could be an engine/classpath change upstream — not determined this pass). **Live-path
+corroboration, not just the standalone check**: a fresh, isolated `verify-ae3-web-dispatch.sh`
+instance (clean boot, no server-side cache reuse possible) probing
+`unit-test/magic-tester/testpages`' own `render-showfail` page (`RenderShowFailShare.js`, `xsl:
+show.xsl`, content `<view title="...">, no `layout` attribute`) both via its direct
+`ae3-test-render-showfail.local` host and via `UniversalTestShare`'s `/render-showfail` path returns
+a real `200` (not `500`) for `Accept: application/xhtml+xml` and for explicit `?___output=xhtml`
+alike, byte-identical either way (`Content-Length: 2982`) — consistent with `show.xsl.tpl` compiling
+successfully and `WebContextXmlXhtml.getResultReply()`'s `RenderException` catch/500 path
+(confirmed present and correct by `javap` disassembly of the live `bin/` class, matching source)
+never firing. The response body is the source `<view>` element echoed essentially unprocessed inside
+the skin's generic page chrome — expected given the content has no `@layout` attribute for
+`show.xsl.tpl`'s `@layout`-dispatching root template to match, not a rendering bug.
+
+**Practical consequence: `render-showfail`/`ae3-test-render-showfail.local` no longer demonstrates a
+render *failure* the way its name and both this file's and `unit-test/magic-tester/README.md`'s own
+prior write-ups describe** ("the one template confirmed to fail XSLTC compile", "reproduces that
+known failure through the real dispatch/render path"). That premise depended on `show.xsl.tpl` being
+broken, which this pass finds it currently is not. Not corrected further here (renaming/repurposing
+the test page, or re-verifying whether the two `XPST0008` errors above are truly gone vs. masked, is
+a judgment call left for the human owner / `keeper-acm` given `show.xsl.tpl`'s off-limits status) —
+flagged so the stale claim above doesn't keep being read as current.
+
 `unit-test/magic-tester/verify-ae3-web-dispatch.sh` remains the deeper end-to-end probe, and is not a
 substitute for this check: its `cmd_probe` counts only an unreachable endpoint as a failure, so a real
 `500` prints in its table and the script still exits `0`.
+
+**Saxon's HTML40Emitter gates *every* HTML-awareness decision on `hasURI("")`, not just script/style —
+so patching one of them at the emitter is symptom-by-symptom, and the served page currently carries a
+second, unfixed instance of the same root cause.** `HTMLEmitter.startElement` (Saxon-HE 9.8.0-15
+sources, `net/sf/saxon/serialize/HTMLEmitter.java:243`) decides raw-text `<script>`/`<style>` handling
+with `elemName.hasURI("")`; `HTML40Emitter.isHTMLElement` (`HTML40Emitter.java:53`) decides
+void-element handling with `name.getURI().equals("")`. Same gate, two places. `show.xsl.tpl` declares
+no `html-version`, so `HTML40Emitter` is the emitter actually in use — and because its result tree is
+XHTML-namespaced, **both** decisions come out wrong. Measured on the real server-rendered
+`complicated-fields` page: 39 entity references inside `<script>` bodies across 4 of 8 blocks, and 15
+spurious end tags for void elements — `</meta>` x3, `</br>` x1, `</img>` x8, `</link>` x2,
+`</input>` x1. `</br>` is worse than inert: an HTML parser reads it as a second `<br>`.
+
+`HTML50Emitter.isHTMLElement` (`HTML50Emitter.java:59`) already accepts `NamespaceConstant.XHTML`
+alongside the empty URI, so Saxon made the namespace-aware choice for the void-element check and not
+for the script/style one — the `hasURI("")` at `:243` reads as an oversight rather than a design.
+Setting the `html-version` output property to "5" therefore fixes the 15 void tags in one line with no
+new class, and does **not** fix script/style, because that check lives in the shared base class and is
+`hasURI("")`-only in both emitters. Useful mainly for telling the two defects apart.
+
+The served page already carries `xmlns=""` on 5 subtrees: those parts are handled correctly by stock
+Saxon while their XHTML-namespaced siblings are not, in the same document. Normalising the namespace
+away before serialization therefore closes both defects at the cause with one mechanism, where an
+emitter subclass closes one and leaves the other. Constraint if that route is taken: strip only
+`http://www.w3.org/1999/xhtml` and leave any other namespace intact — this page emits no `<svg>`/
+`<math>`, but that is measured for this page, not proven for every page on this path, and a blanket
+strip would damage foreign vocabulary the day one appears.
+
+**Measuring this defect: count entity references inside `<script>` element bodies, never in the whole
+document.** An entity in an attribute value (`href="/x?a=1&amp;b=2"`) is correct and must not be
+counted — that is the false-positive side, and a whole-document grep fails it. The complementary
+control is a script body carrying `&amp;`/`&nbsp;`/`&#160;`/`&#xA0;`, which must come back non-zero.
+A second instrument that does not share the first one's parser: feed each `<script>` body to a real
+JavaScript engine (`osascript -l JavaScript`, `new Function(src)` parses without executing). On the
+unfixed page 3 of 8 blocks are `SyntaxError` — the three nested-frame blocks whose
+`window.Effects &amp;&amp; ...` is not valid JavaScript, which is exactly why those frames never
+appeared on the server-rendered path. The two instruments have different sensitivities and both are
+worth running: the confirm block's `? '?' : '&amp;'` is a valid JS string literal, so it parses clean
+while still building a wrong URL — the entity count catches all 4 blocks, the parse check catches 3.
+
+**`?___output=html` and `?___output=txt` return 501/500 `Layout 'formatted' is not known` on
+`complicated-fields`/`data-form`.** Pre-existing and unrelated to the serializer work — reproduced
+identically on an instance whose classes predate any change here. `ReduceDataViewGrid*Fn.js` put an
+object-valued `field.title` straight into their `elements` list. Open, not routed to an owner yet.
+
+**Resolved: the XHTML namespace is normalized away before the emitter, in
+`XslServerRender.XhtmlNamespaceStrippingReceiver`.** Human-owner decision, taken against the three
+routes above. One mechanism closes both defects through stock Saxon: `hasURI("")` then matches, so
+`<script>`/`<style>` content serializes raw and void elements get no end tag, with no emitter subclass
+and no dependence on `HTML40Emitter`/`HTML50Emitter` internals. `METHOD=html` stays — it is the
+correct contract for the `text/html` these replies carry and selects the emitter family this works
+through.
+
+Only `http://www.w3.org/1999/xhtml` is stripped; `namespace()` events for any other URI forward
+unchanged, so `xmlns:layout` still appears on the root and a foreign vocabulary (SVG, MathML) reaching
+this path keeps the namespace its own serialization rules need. Attribute names are untouched: an
+unprefixed attribute is already in no namespace, and neither emitter decision reads attributes.
+
+**The interposition is a `Serializer` subclass, not a `Destination` wrapper, and that is load-bearing.**
+`XsltTransformer.setDestination` special-cases an actual `instanceof Serializer`; that branch is what
+applies `show.xsl.tpl`'s own `xsl:output` declaration and merges in the U+00A0 character map. A
+hand-written `Destination` wrapping a `Serializer` silently loses both. Both `getReceiver` overloads
+are overridden because that same branch calls the `PipelineConfiguration` one. Same shape the
+since-removed `SerializerXhtmlDisableEscapingNeutralizing` used, kept for that reason.
+
+The receiver sits at the head of the chain, ahead of `CharacterMapExpander`, and does not disturb it:
+the `render-nbsp` page still serializes U+00A0 as `&#160;` with no named `&nbsp;` and no unmapped raw
+U+00A0.
+
+Measured on the real server-rendered pages, with both instrument controls run alongside: entity
+references inside `<script>` bodies 39 -> 0 on `complicated-fields`; spurious void end tags 15 -> 0 on
+that page and 0 across all 50 HTML-bearing bodies of the full testpage battery (the same sweep counts
+15 on the pre-change page, so it can detect them). Every `<script>` body parses in a real JavaScript
+engine, 8 of 8, against 5 of 8 before. `?___output=xml` is byte-identical to its pre-change reply apart
+from the request timestamp, PI intact. Battery: 135 cases across 15 hosts, no new failures.
+
+In-document control for the strip being scoped rather than blanket: five elements on this page
+(`alias`, `internal`, `license`, `manual`, `rawQuery`) previously carried `xmlns=""` undeclarations
+because they sat in no namespace inside XHTML-namespaced parents. After normalization the parents are
+no-namespace too, the undeclarations are gone as unnecessary, and all five elements still serialize.

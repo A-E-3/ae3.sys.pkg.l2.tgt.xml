@@ -5,12 +5,26 @@ import java.io.StringWriter;
 
 import javax.xml.transform.stream.StreamSource;
 
+import net.sf.saxon.Configuration;
+import net.sf.saxon.event.PipelineConfiguration;
+import net.sf.saxon.event.ProxyReceiver;
+import net.sf.saxon.event.Receiver;
+import net.sf.saxon.expr.parser.Location;
+import net.sf.saxon.lib.NamespaceConstant;
+import net.sf.saxon.om.NamespaceBinding;
+import net.sf.saxon.om.NamespaceBindingSet;
+import net.sf.saxon.om.NoNamespaceName;
+import net.sf.saxon.om.NodeName;
 import net.sf.saxon.om.StructuredQName;
+import net.sf.saxon.s9api.Processor;
+import net.sf.saxon.s9api.SaxonApiException;
 import net.sf.saxon.s9api.Serializer;
 import net.sf.saxon.s9api.XsltExecutable;
 import net.sf.saxon.s9api.XsltTransformer;
 import net.sf.saxon.serialize.CharacterMap;
 import net.sf.saxon.serialize.CharacterMapIndex;
+import net.sf.saxon.trans.XPathException;
+import net.sf.saxon.type.SchemaType;
 import net.sf.saxon.z.IntHashMap;
 
 import ru.myx.ae3.answer.Reply;
@@ -74,6 +88,79 @@ final class XslServerRender {
 		}
 	}
 
+	/** Saxon-HE's {@code net.sf.saxon.serialize.HTMLEmitter} decides whether an element is an HTML
+	 * element by testing for the empty namespace URI, and it does so in two separate places: whether
+	 * {@code <script>}/{@code <style>} content is raw CDATA text ({@code HTMLEmitter#startElement},
+	 * {@code elemName.hasURI("")}) and whether a void element needs no end tag
+	 * ({@code HTML40Emitter#isHTMLElement}, {@code name.getURI().equals("")}). show.xsl.tpl's root
+	 * output element declares {@code xmlns="http://www.w3.org/1999/xhtml"}, so every element it emits
+	 * carries the XHTML namespace and both decisions come out wrong at once: script bodies get
+	 * ordinary text escaping, and a browser reads {@code &amp;&amp;} as literal text instead of
+	 * {@code &&}; void elements get spurious end tags, and {@code </br>} is read as a second
+	 * {@code <br>}.
+	 *
+	 * Normalizing that namespace away before the emitter sees it fixes both through stock Saxon,
+	 * instead of re-implementing each decision in an emitter subclass one at a time - which is
+	 * open-ended, since every HTML-awareness decision in that emitter is gated the same way. Only
+	 * {@code http://www.w3.org/1999/xhtml} is stripped: any other namespace passes through untouched,
+	 * so a foreign vocabulary (SVG, MathML) reaching this path keeps the namespace its own
+	 * serialization rules depend on. Attribute names are left alone - an unprefixed attribute is
+	 * already in no namespace, and neither emitter decision looks at attributes. */
+	private static final class XhtmlNamespaceStrippingReceiver extends ProxyReceiver {
+
+		XhtmlNamespaceStrippingReceiver(final Receiver next) {
+
+			super(next);
+		}
+
+		@Override
+		public void startElement(final NodeName elemName, final SchemaType typeCode, final Location location, final int properties) throws XPathException {
+
+			super.startElement(elemName.hasURI(NamespaceConstant.XHTML)
+				? new NoNamespaceName(elemName.getLocalPart())
+				: elemName, typeCode, location, properties);
+		}
+
+		@Override
+		public void namespace(final NamespaceBindingSet namespaceBindings, final int properties) throws XPathException {
+
+			for (final NamespaceBinding binding : namespaceBindings) {
+				/** a NamespaceBinding is itself a single-entry NamespaceBindingSet, so a surviving one forwards as-is */
+				if (!NamespaceConstant.XHTML.equals(binding.getURI())) {
+					super.namespace(binding, properties);
+				}
+			}
+		}
+	}
+
+	/** s9api {@link Serializer} subclass inserting {@link XhtmlNamespaceStrippingReceiver} at the head
+	 * of Saxon's own serialization receiver chain, otherwise built and configured exactly as a stock
+	 * {@link Serializer}. Subclassing, rather than wrapping one behind a hand-written
+	 * {@code Destination}, is load-bearing: {@code XsltTransformer.setDestination} special-cases an
+	 * actual {@code instanceof Serializer}, and that branch is what applies show.xsl.tpl's own
+	 * {@code xsl:output} declaration and merges in the U+00A0 character map above - a plain
+	 * {@code Destination} wrapper silently loses both. Both {@code getReceiver} overloads are covered
+	 * because that same branch calls the {@link PipelineConfiguration} one. */
+	private static final class SerializerHtmlXhtmlNamespaceStrip extends Serializer {
+
+		SerializerHtmlXhtmlNamespaceStrip(final Processor processor) {
+
+			super(processor);
+		}
+
+		@Override
+		public Receiver getReceiver(final Configuration config) throws SaxonApiException {
+
+			return new XhtmlNamespaceStrippingReceiver(super.getReceiver(config));
+		}
+
+		@Override
+		public Receiver getReceiver(final PipelineConfiguration pipe) throws SaxonApiException {
+
+			return new XhtmlNamespaceStrippingReceiver(super.getReceiver(pipe));
+		}
+	}
+
 	/** @param xsl
 	 *            result.xsl value, used to look up a scanned stylesheet by file name
 	 * @param xml
@@ -99,11 +186,12 @@ final class XslServerRender {
 			// text/html, where a real <script>/<style> block is exactly what's wanted - no
 			// neutralizing/CDATA-wrapping receiver needed; the stock Serializer's own XMLEmitter
 			// already emits DISABLE_ESCAPING content raw/literal, which is the correct behavior here.
-			final Serializer serializer = ((XsltExecutable) executable).getProcessor().newSerializer();
+			final Serializer serializer = new SerializerHtmlXhtmlNamespaceStrip(((XsltExecutable) executable).getProcessor());
 			serializer.setOutputWriter(writer);
 			serializer.setCharacterMap(XslServerRender.nbspCharacterMapIndex);
 			serializer.setOutputProperty(Serializer.Property.USE_CHARACTER_MAPS, XslServerRender.nbspCharacterMapName.getLocalPart());
-			serializer.setOutputProperty(Serializer.Property.METHOD, "xhtml");
+			// "html", not "xhtml": replies here are served text/html, where script/style content must stay unescaped
+			serializer.setOutputProperty(Serializer.Property.METHOD, "html");
 			serializer.setOutputProperty(Serializer.Property.OMIT_XML_DECLARATION, "yes");
 			final XsltTransformer transformer = ((XsltExecutable) executable).load();
 			transformer.setSource(new StreamSource(new StringReader(xml)));
