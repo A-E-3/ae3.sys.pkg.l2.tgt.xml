@@ -209,7 +209,7 @@ Re-verified for real, three ways:
 1. Standalone stock-Saxon harness (no custom `SerializerFactory`) against the real, current
    `show.xsl.tpl` and real captured production XML: `'&amp;'` (single-escaped, correct) — not `'&'`,
    not `'&amp;amp;'`.
-2. Live server, real established tooling (`unit-test/magic-tester/verify-ae3-web-dispatch.sh`, both
+2. Live server, real established tooling (`unit-test/magic-tester/verify-ae3-web-dispatch.test.sh`, both
    projects freshly recompiled into their real `bin/` — the ad hoc scratch scripts used earlier that
    night were retired in favor of this), targeting `Host: ae3.local` (the real production alias, not
    a synthetic testpage — `ae3.myx.nz.json` is itself just `{"type":"alias","alias":"ae3.local"}`),
@@ -231,7 +231,7 @@ Re-verified for real, three ways:
    global at the serializer level (removes the broken override entirely) — no per-instance/per-line
    fix was needed once the wrong override was gone.
 
-`unit-test/magic-tester/verify-ae3-web-dispatch.sh` itself gained two small, permanent fixes as
+`unit-test/magic-tester/verify-ae3-web-dispatch.test.sh` itself gained two small, permanent fixes as
 part of this pass (both real gaps the Saxon-HE engine-swap epic had left in this shared tooling, not
 scoped to this one bug): its `build_classpath` was missing the Saxon-HE jar entirely (every
 render would have thrown `NoClassDefFoundError` for `net.sf.saxon.TransformerFactoryImpl` before
@@ -445,8 +445,8 @@ their document-order execution (jQuery before `jquery.dataTables.min.js`) instea
   bare `<script>`, which is why the old gap wasn't caught — see git history/this entry's prior
   revision for that shape).
 - Compiled the fix (`javac` into this project's own `bin/`, picked up ahead of the axiom's packaged
-  jar per `verify-ae3-web-dispatch.sh`'s own classpath assembly) and ran it against a real, isolated,
-  loopback-only local AE3 server (`unit-test/magic-tester/verify-ae3-web-dispatch.sh start`), then
+  jar per `verify-ae3-web-dispatch.test.sh`'s own classpath assembly) and ran it against a real, isolated,
+  loopback-only local AE3 server (`unit-test/magic-tester/verify-ae3-web-dispatch.test.sh start`), then
   fetched `Host: ae3-test-doe-rawhead.local` with `Accept: application/xhtml+xml` — a real `200`,
   `Content-Type: application/xhtml+xml`, `show.xsl.tpl` used completely unmodified.
 - `xmllint --noout` on the real response body: well-formed. Python's `xml.dom.minidom` (a real XML
@@ -544,7 +544,7 @@ OK    ./ae3-packages/ae3.sys.l2.tgt.xml/resources/skin/skin-standard-xml/showSta
 mtime, after whatever earlier state the two-`XPST0008` claim described — something changed the file's
 compile outcome since that entry was written (root cause not chased down here: could be the file
 itself, could be an engine/classpath change upstream — not determined this pass). **Live-path
-corroboration, not just the standalone check**: a fresh, isolated `verify-ae3-web-dispatch.sh`
+corroboration, not just the standalone check**: a fresh, isolated `verify-ae3-web-dispatch.test.sh`
 instance (clean boot, no server-side cache reuse possible) probing
 `unit-test/magic-tester/testpages`' own `render-showfail` page (`RenderShowFailShare.js`, `xsl:
 show.xsl`, content `<view title="...">, no `layout` attribute`) both via its direct
@@ -566,7 +566,7 @@ the test page, or re-verifying whether the two `XPST0008` errors above are truly
 a judgment call left for the human owner / `keeper-acm` given `show.xsl.tpl`'s off-limits status) —
 flagged so the stale claim above doesn't keep being read as current.
 
-`unit-test/magic-tester/verify-ae3-web-dispatch.sh` remains the deeper end-to-end probe, and is not a
+`unit-test/magic-tester/verify-ae3-web-dispatch.test.sh` remains the deeper end-to-end probe, and is not a
 substitute for this check: its `cmd_probe` counts only an unreachable endpoint as a failure, so a real
 `500` prints in its table and the script still exits `0`.
 
