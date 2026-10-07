@@ -9,6 +9,17 @@ Accept) and `WebContextXmlAutoDetect` (the same server-side render, but Accept-g
 to `WebContextXml`'s raw reply when the client didn't ask for `application/xhtml+xml`), plus
 `XslServerRender` (package-private, shared server-side XSLT rendering used by both subclasses).
 
+**Raw versus enriched `text/xml`.** `WebContextXml.onNest` in `CLONE` mode runs the skin chain's
+layout walk, which produces the `{layout:"xml", xsl, content}` reply with the `xml-stylesheet`
+processing instruction. With `___output=text/xml` the walk is skipped and the reply is the raw
+`Xml.toXmlBinary` body. `___output=xml` still walks. `WebContextXmlAutoDetect` (`CLONE_SKINNED`) is
+reached only by tier 4 and acts on xhtml only through `XslServerRender.acceptsXhtml`. Tier 3 never
+routes an xhtml `Accept` to `WebContextXmlXhtml` — `xhtml.json` registers no `contentTypes` entry for
+`application/xhtml+xml` (only `extensions`), so tier 3's content-type match has nothing to match it
+against, and that case falls through to tier 4 and this same gate.
+`WebContextXmlXhtml` stays reachable through explicit `___output=xhtml` (tier 1) or the `.xhtml`
+extension (tier 2), neither of which this gate covers.
+
 **`WebContextXmlXhtml`/`WebContextXmlAutoDetect` and their `xhtml.json`/`auto-detect.json` wiring
 are already-committed, pre-existing infrastructure, not new work from any current epic** —
 `git log --oneline`: `1253122` "first attempts to render XSLT server-side", `324c3a2` "WebContextXml
@@ -36,8 +47,9 @@ implementations rely on (so a nested `data-view` layout gets reduced to the `xml
 both subclasses look for). Additive and behavior-preserving — no existing caller's behavior
 changed.
 
-`XslServerRender.acceptsXhtml` (`XslServerRender.java:36-39`) gates on the literal substring
-`"application/xhtml+xml"` in the `Accept` header — a bare `*/*` doesn't contain it, so even a
+`XslServerRender.acceptsXhtml` (`XslServerRender.java:36-39`) gates on the shared
+`MimeType.SMT_APPLICATION_XHTML_XML` constant (`ae3.sdk`), matched as a substring of the `Accept`
+header — a bare `*/*` doesn't contain it, so even a
 request that does reach `WebContextXmlAutoDetect` (AE3's own tier-4 dispatch wildcard, see
 `ae3.sys.pkg.i3.web`'s own MAGIC.md) falls through to `WebContextXml`'s raw reply for that reason
 alone, byte-identical to plain `WebContextXml`'s own output despite being a different class.
@@ -471,6 +483,12 @@ their document-order execution (jQuery before `jquery.dataTables.min.js`) instea
   applying visually) is still worth doing before/at release.
 
 **`WebContextXml.getResultReply()` now recognizes the `{layout:"final", type:<content-type>}` reply-object sentinel generically, not only a hardcoded `"text/xml"` match.** This sentinel is a generic, pre-existing, cross-cutting AE3 convention — "already fully rendered, serve `content` raw with `type` as the HTTP Content-Type" — produced symmetrically by multiple standard-skin `LayoutDefinition`s (`ae3.sdk`'s `resources/skin/skin-standard/layouts/Xml.jslt` and sibling `Html.jslt`, at minimum), not something specific to XML output; see `FormatSAPI.java`'s javadoc (~line 1570) for the contract. `getResultReply()` now branches on any non-empty `type`. The `X-Debug-Origin: LAYOUT_FINAL` cases referenced earlier in this file (the welcome page, `preview.ndss.knt9.xyz`) are instances of this same generic sentinel, not an XML-only mechanism. General pattern, cross-referenced from `keeper-ae3.armed.md`'s own Domain knowledge.
+
+**CORRECTION — a later edit in this session family had narrowed the final-layout branch to only `text/xml`; reverted to the committed `b987e48` behavior.** `WebContextXml.getResultReply()`'s `"final".equals(layout)` branch reads `type` with `trim()`, and whenever `type.length() > 0` it replies with `content`, `code`, and `Content-Type` set to `type` verbatim, then `setFinal()` — the reply is sent straight through unchanged, its content type never rewritten to `text/xml` or anything else. A `final` reply of type `text/html` therefore passes through as `text/html`, and one of type `text/xml` passes through as `text/xml`.
+
+**New registration: `xslt-xhtml-detect.json` (`extensions: ["xslt-xhtml-detect"]`) now also carries `contentTypes: ["application/xhtml+xml"]`, `priority: 1.0`, referencing `WebContextXmlAutoDetect`.** The content type is additive next to the existing `extensions` entry, not placed on `xhtml.json` — that file keeps registering `WebContextXmlXhtml` by extension only (`priority: 0`), no `contentTypes` entry.
+
+**Live-verified (`unit-test/magic-tester/verify-ae3-web-dispatch.test.sh`): with `___output-client-detect` absent, `WebContextXmlAutoDetect` now answers an `application/xhtml+xml` Accept ahead of `text/html`, deterministically by the new priority.** Against `ae3.local`: `Accept: application/xhtml+xml` alone, and `Accept: text/html,application/xhtml+xml,*/*`, both resolve to `WebContextXmlAutoDetect`; no `Accept` falls through to the same class via the tier-4 wildcard. `WebContextOutputRegistry.findBest`'s strict-less-than / first-token-on-tie comparison is unchanged — this is the new `priority: 1.0` winning the comparison, not a ranking-logic change. Two new `{layout:"final", ...}` test pages (`render-final-xml.local`, `render-final-html.local`) each come back with their own `Content-Type` — `text/xml`, `text/html` — unchanged, confirming the `b987e48` restore end-to-end.
 
 **PLANNED FIX, approved but not yet implemented (2026-09-01) — revert `show.xsl.tpl` line 9's `<xsl:output>`, paired with explicit Saxon `Serializer` configuration in `XslServerRender.java`. Scoped to this checkout (`/Volumes/workspace/myx/ae3.sys.pkg.l2.tgt.xml/`) only — a separate `/Volumes/ws-2017/` checkout of this same repo is not the target.** Commit `8687e307` ("* XHTML mode") changed line 9 from `<xsl:output method="html" indent="no"/>` to `<xsl:output method="xhtml" indent="no" omit-xml-declaration="yes"/>` to fix the Saxon path's void-element self-closing behavior — but this declaration is also read directly by the old client-side-PI path (`WebContextXml`'s raw reply, browser-side XSLT), which never goes through Saxon. Flipping it to `xhtml` silently switched that client-side path's result parsing from lenient HTML to strict XML, turning a previously-harmless raw `<"` in DataTables' `rawHeadData`/`sDom` config into a real XML parse error in production (`https://ae3.myx.nz/monitoring/runtimeStatsLog?...&___output=xml`, confirmed live: "StartTag: invalid element name"). Approved fix, both parts required together:
 1. Revert line 9 to `<xsl:output method="html" indent="no"/>`, its pre-`8687e307` state — fixes the client-side path.

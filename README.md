@@ -11,7 +11,9 @@ Provides three HTTP output modes, selected by `___output=` or file extension:
 
 - **`xml`** — raw XML with a client-side `<?xml-stylesheet?>` PI pointing at the XSL skin (`text/xml`)
 - **`xhtml`** — server-side XSLT transform always (unconditional XHTML output)
-- **`auto-detect`** (default) — server-side XSLT transform if the client's `Accept` header includes `application/xhtml+xml` and the result has an XSL skin; otherwise falls back to raw XML
+- **`auto-detect`** (default) — server-side XSLT transform if the client's `Accept` header includes `application/xhtml+xml` and the result has an XSL skin; otherwise falls back to raw XML. The `application/xhtml+xml` content-type match is carried by the `xslt-xhtml-detect` target registration.
+
+A reply already fully rendered (the `layout: "final"` sentinel) is sent straight through unchanged — its content, status code and `Content-Type` are never rewritten here.
 
 The XSL skin (`skin-standard-xml`) transforms AE3 layout XML into HTML pages with flex layout, responsive CSS, and menu/form/table widgets.
 
