@@ -1,5 +1,15 @@
 # MAGIC.md — ae3.sys.pkg.l2.tgt.xml
 
+## A second checkout of this repo holds the uncorrected text (measured 2026-11-04)
+
+`/Volumes/ws-2017/myx-work/source/ae3/ae3.sys.pkg.l2.tgt.xml/` is a checkout of this same repo at the
+same `HEAD` (`c86495a`). Its `MAGIC.md` is the committed 669-line version, while this one carries
+uncommitted corrections and is longer. `MAGIC.md` is the only dirty path on this side.
+
+- A correction recorded here and uncommitted does not exist there.
+- The 2026-09-01 `show.xsl.tpl` entry below scopes its approved fix to this checkout, and names that
+  one as not the target. That sentence exists only in this copy.
+
 ## For keeper-ae3 / magic-tester
 
 `java/ru/myx/ae3/l2/xml/` holds the XML/XHTML render targets: `WebContextXml` (the historic
@@ -13,22 +23,24 @@ to `WebContextXml`'s raw reply when the client didn't ask for `application/xhtml
 layout walk, which produces the `{layout:"xml", xsl, content}` reply with the `xml-stylesheet`
 processing instruction. With `___output=text/xml` the walk is skipped and the reply is the raw
 `Xml.toXmlBinary` body. `___output=xml` still walks. `WebContextXmlAutoDetect` (`CLONE_SKINNED`) is
-reached only by tier 4 and acts on xhtml only through `XslServerRender.acceptsXhtml`. Tier 3 never
-routes an xhtml `Accept` to `WebContextXmlXhtml` — `xhtml.json` registers no `contentTypes` entry for
-`application/xhtml+xml` (only `extensions`), so tier 3's content-type match has nothing to match it
-against, and that case falls through to tier 4 and this same gate.
-`WebContextXmlXhtml` stays reachable through explicit `___output=xhtml` (tier 1) or the `.xhtml`
-extension (tier 2), neither of which this gate covers.
+reached at tier 3 for an xhtml `Accept`, where `XslServerRender.acceptsXhtml` then gates rendering —
+`xhtml.json` registers no `contentTypes` entry, but `xslt-xhtml-detect.json` registers
+`contentTypes: ["application/xhtml+xml"]` at `priority: 1.0` for this same class, so tier 3's
+content-type match resolves it directly. `WebContextXmlXhtml` stays reachable through explicit
+`___output=xhtml` (tier 1) or the `.xhtml` extension (tier 2), neither of which this gate covers.
+Tier 4 has no registration left: `c86495a` renamed `auto-detect.json` to `xslt-xhtml-detect.json` and
+dropped its `extensions: ["*", "auto-detect"]`, so the wildcard keyword matches nothing.
 
-**`WebContextXmlXhtml`/`WebContextXmlAutoDetect` and their `xhtml.json`/`auto-detect.json` wiring
+**`WebContextXmlXhtml`/`WebContextXmlAutoDetect` and their `xhtml.json`/`xslt-xhtml-detect.json` wiring
 are already-committed, pre-existing infrastructure, not new work from any current epic** —
 `git log --oneline`: `1253122` "first attempts to render XSLT server-side", `324c3a2` "WebContextXml
-moved in from i3.web; register xml/xhtml/auto-detect via JSON".
-`ae3-packages/ae3.sys.l2.tgt.xml/settings/system/l3/targets/{xhtml,auto-detect}.json` carry no
+moved in from i3.web; register xml/xhtml/auto-detect via JSON", `c86495a` "XML+XSL -> HTML, updated"
+for the rename.
+`ae3-packages/ae3.sys.l2.tgt.xml/settings/system/l3/targets/{xhtml,xslt-xhtml-detect}.json` carry no
 uncommitted changes — any request whose Accept header carries `application/xhtml+xml` already
-reaches `WebContextXmlXhtml.getResultReply()` in this working tree today, independent of the
+reaches `WebContextXmlAutoDetect.getResultReply()` in this working tree today, independent of the
 `WebContextType` dispatch-race fix (see `ae3.sys.pkg.i3.web`'s own MAGIC.md) — neither design
-considered for that fix touches `xhtml.json`.
+considered for that fix touches either descriptor.
 
 The real uncommitted work on top of that already-landed foundation is confined to 4 files
 (`git diff --stat`: 278 insertions across `WebContextXml.java`, `WebContextXmlAutoDetect.java`,
@@ -47,10 +59,12 @@ implementations rely on (so a nested `data-view` layout gets reduced to the `xml
 both subclasses look for). Additive and behavior-preserving — no existing caller's behavior
 changed.
 
-`XslServerRender.acceptsXhtml` (`XslServerRender.java:36-39`) gates on the shared
+`XslServerRender.acceptsXhtml`
+(`/Volumes/workspace/myx/ae3.sys.pkg.l2.tgt.xml/java/ru/myx/ae3/l2/xml/XslServerRender.java:194-198`)
+gates on the shared
 `MimeType.SMT_APPLICATION_XHTML_XML` constant (`ae3.sdk`), matched as a substring of the `Accept`
 header — a bare `*/*` doesn't contain it, so even a
-request that does reach `WebContextXmlAutoDetect` (AE3's own tier-4 dispatch wildcard, see
+request that does reach `WebContextXmlAutoDetect` (AE3's own tier-3 content-type descriptor, see
 `ae3.sys.pkg.i3.web`'s own MAGIC.md) falls through to `WebContextXml`'s raw reply for that reason
 alone, byte-identical to plain `WebContextXml`'s own output despite being a different class.
 
@@ -490,6 +504,13 @@ their document-order execution (jQuery before `jquery.dataTables.min.js`) instea
 
 **Live-verified (`unit-test/magic-tester/verify-ae3-web-dispatch.test.sh`): with `___output-client-detect` absent, `WebContextXmlAutoDetect` now answers an `application/xhtml+xml` Accept ahead of `text/html`, deterministically by the new priority.** Against `ae3.local`: `Accept: application/xhtml+xml` alone, and `Accept: text/html,application/xhtml+xml,*/*`, both resolve to `WebContextXmlAutoDetect`; no `Accept` falls through to the same class via the tier-4 wildcard. `WebContextOutputRegistry.findBest`'s strict-less-than / first-token-on-tie comparison is unchanged — this is the new `priority: 1.0` winning the comparison, not a ranking-logic change. Two new `{layout:"final", ...}` test pages (`render-final-xml.local`, `render-final-html.local`) each come back with their own `Content-Type` — `text/xml`, `text/html` — unchanged, confirming the `b987e48` restore end-to-end.
 
+**Staleness, measured 2026-11-04: only the tier-4 phrase in the paragraph above is out of date; its
+result stands.** `c86495a` removed the wildcard descriptor in the very commit that carries this
+paragraph, so no tier-4 wildcard exists for an Accept to fall through to now. The recorded outcome —
+both Accept headers resolve `WebContextXmlAutoDetect`, `findBest`'s comparison unchanged, the two
+`{layout:"final"}` pages keeping their own `Content-Type` — is unaffected: it rests on the
+`priority: 1.0` content-type registration, which is the tier-3 route.
+
 **PLANNED FIX, approved but not yet implemented (2026-09-01) — revert `show.xsl.tpl` line 9's `<xsl:output>`, paired with explicit Saxon `Serializer` configuration in `XslServerRender.java`. Scoped to this checkout (`/Volumes/workspace/myx/ae3.sys.pkg.l2.tgt.xml/`) only — a separate `/Volumes/ws-2017/` checkout of this same repo is not the target.** Commit `8687e307` ("* XHTML mode") changed line 9 from `<xsl:output method="html" indent="no"/>` to `<xsl:output method="xhtml" indent="no" omit-xml-declaration="yes"/>` to fix the Saxon path's void-element self-closing behavior — but this declaration is also read directly by the old client-side-PI path (`WebContextXml`'s raw reply, browser-side XSLT), which never goes through Saxon. Flipping it to `xhtml` silently switched that client-side path's result parsing from lenient HTML to strict XML, turning a previously-harmless raw `<"` in DataTables' `rawHeadData`/`sDom` config into a real XML parse error in production (`https://ae3.myx.nz/monitoring/runtimeStatsLog?...&___output=xml`, confirmed live: "StartTag: invalid element name"). Approved fix, both parts required together:
 1. Revert line 9 to `<xsl:output method="html" indent="no"/>`, its pre-`8687e307` state — fixes the client-side path.
 2. Set `Property.METHOD = "xhtml"` and `Property.OMIT_XML_DECLARATION = "yes"` explicitly on `XslServerRender`'s Saxon `Serializer` in Java, so the server-side path stops depending on the stylesheet's own `<xsl:output>` — the revert then can't re-break it, since Java-side serializer properties take precedence over the stylesheet's own `xsl:output`.
@@ -667,3 +688,54 @@ In-document control for the strip being scoped rather than blanket: five element
 (`alias`, `internal`, `license`, `manual`, `rawQuery`) previously carried `xmlns=""` undeclarations
 because they sat in no namespace inside XHTML-namespaced parents. After normalization the parents are
 no-namespace too, the undeclarations are gone as unnecessary, and all five elements still serialize.
+
+## The three live `ae3/txt` call sites ask for a member it does not export
+
+Three live helper call sites ask `ae3/txt` for a member it does not export, and the same member is missing from every sibling module. Measured 2026-11-09 by reading source.
+
+`/Volumes/workspace/myx/acm-cvs/sys-current/resources/lib/ae3/txt.js`, 33 lines, exports exactly four members: `makeDataTableText`, `makeDataTableBinary`, `makeDataTableMessage` and `makeDataTableReply`, each delegating to `csv.js`. It exports no `makeDataViewReply`.
+
+The call sites that reach for it, all in `/Volumes/workspace/myx/acm-cvs/sys-current/resources/lib/ae3.l2.xml/helper/`:
+
+- `MakeSelectViewReplyFn.js:33` calls `require("ae3/txt").makeDataViewReply` behind the `if(query?.parameters.___output){` guard at `:26`.
+- `MakeSequenceReplyFn.js:32` does the same behind `:25`.
+- `MakeDataFormReplyFn.js:35` does the same behind `:28`.
+
+The control sits beside them. `MakeDataTableReplyFn.js:52` requires `makeDataTableReply`, which `txt.js` does export.
+
+One further site is dead rather than broken. `MakeMessageReplyFn.js:54` requires `makeMessageReply`, and its whole block is behind the literal `if(false && query?.parameters.___output){` at `:47`.
+
+The gap is wider than `txt.js`. `makeDataViewReply` occurs 0 times in `xls.js`, `pdf.js`, `html.js`, `csv.js` and `txt.js`, while 10 lines across `MakeDataFormReplyFn.js`, `MakeSelectViewReplyFn.js`, `MakeSequenceReplyFn.js` and `MakeDocumentationReplyFn.js` call it on those three targets. So a repair aimed at `txt.js` alone would leave the xls and pdf legs of the same switch equally broken.
+
+The seven copies of both scripts in the place are md5-identical (`txt.js` `5f286fdf9e686c2246d9688d3bdb040e` at 958 bytes, `csv.js` `ca97da603c4cdfe93d71943db00b8359` at 3,961 bytes), so no checkout holds a corrected version to pull.
+
+This is a reading, not a run. Each call sits behind a `___output` request parameter and no such request was made, so which of these branches a live server reaches is unmeasured. Whether the repair belongs here or in the five modules is a design question, and it is with `magic-coordinator`.
+
+## Symlinks in this project (measured 2026-11-10)
+
+One link in this project arrived on 2026-11-06 in the same eight-second window as 49 self-links in `acm-cvs/sys-current`.
+
+`/Volumes/workspace/myx/ae3.sys.pkg.l2.tgt.xml/ae3-packages/ae3.sys.l2.tgt.xml/resources/lib/ae3.l2.xml/ae3.l2.xml` is a symbolic link, mtime `2026-11-06 07:52:59`, pointing at `/Volumes/workspace/myx/acm-cvs/sys-current/resources/lib/ae3.l2.xml` (a real folder, 4 entries). `git status` in this project reports it untracked.
+
+It is the only link here. `find /Volumes/workspace/myx/ae3.sys.pkg.l2.tgt.xml -type l` lists 1, and the 83 `ae3*` projects of this place hold 1 link between them.
+
+The shape differs from the axiom's. The axiom's 49 point at their own parent directory. This one points at another tree. Both arrived inside `07:52:54`-`07:53:01`, so one tool wrote both, and a reader looking for that tool's trace reads this line with the axiom's.
+
+Read-only survey, 2026-11-10: 3438 directories probed to depth four or five across `/Volumes/workspace`, `/Volumes/ws-2017` and `/Users/myx` give exactly two axiom trees (`boot.jar` + `axiom/` + `settings/`), `acm-cvs/sys-current` and `acm-cvs/sys-release`. Only `sys-current` carries the self-link shape.
+
+## ae3/txt and ae3/csv read a bare name that no function declares (measured 2026-11-10)
+
+The same two scripts carry a second fault, and it is not the export gap above.
+
+- `/Volumes/workspace/myx/acm-cvs/sys-current/resources/lib/ae3/txt.js:15` reads `name` inside `makeDataTableMessage`, and `:24` reads it inside `makeDataTableReply`. All 33 lines hold 0 `const`, `let` or `var` declarations of `name`.
+- `/Volumes/workspace/myx/acm-cvs/sys-current/resources/lib/ae3/csv.js:73` declares it once, inside the `$output(csv){` block opened at `:72` and closed at `:149`, in `makeDataTableText`. Its reads at `:160`, `:161` and `:170` sit in the two functions below that one, so the declaration does not reach them.
+- The two sibling targets doing the same job declare it in each function that reads it. `/Volumes/workspace/myx/acm-cvs/sys-current/resources/lib/ae3/pdf.js:78` and `/Volumes/workspace/myx/acm-cvs/sys-current/resources/lib/ae3/html.js:169` each open `makeDataTableReply` with `const name = layout.name || 'data';`.
+- `/Volumes/workspace/myx/acm-cvs/sys-current/resources/lib/ae3/xls.js` declares it six times, at `:66`, `:247`, `:414`, `:422`, `:430` and `:436`, once in every function that reads it. Control: its reads at `:69`, `:250`, `:416`, `:417`, `:424`, `:425`, `:431` and `:437` each fall inside one of those functions.
+
+A bounded probe over the 18 modules in `/Volumes/workspace/myx/acm-cvs/sys-current/resources/lib/ae3/` gives `txt.js` and `csv.js` as the only two with a read the file's own declaration does not cover. `txt.js` is the narrower case: it declares `name` nowhere at all.
+
+A JavaScriptCore control answers the language rule, not AE3's engine. A function reading an undeclared `name` gives `ReferenceError: Can't find variable: name`. The same function with `const name = "data"` returns `data.txt`. A sibling function still fails after another function declares the variable locally. AE3's ECMA dialect is a different engine, so whether its global scope supplies a `name` is unmeasured here, and `ae3.js` defines no such global.
+
+Reaching `txt.js:24` needs the export gap repaired first, since `MakeDataTableReplyFn.js:52` is the only live caller of an exported member, and it asks for `makeDataTableReply`. Three helpers ask for `makeDataViewReply`, which `txt.js` does not export. `makeDataTableMessage` has no caller outside `txt.js`'s own export table, and `csv.js`'s `makeDataTableMessage` has none at all.
+
+This is a reading, not a run. No `.txt` download was requested.
