@@ -239,7 +239,6 @@
 								/* document.getElementById("njT").style.zIndex = 0; */
 								ae3.display();
 							},0);
-							window.stop ? window.stop() : document.close();
 	
 							if(false){
 					

@@ -739,3 +739,16 @@ A JavaScriptCore control answers the language rule, not AE3's engine. A function
 Reaching `txt.js:24` needs the export gap repaired first, since `MakeDataTableReplyFn.js:52` is the only live caller of an exported member, and it asks for `makeDataTableReply`. Three helpers ask for `makeDataViewReply`, which `txt.js` does not export. `makeDataTableMessage` has no caller outside `txt.js`'s own export table, and `csv.js`'s `makeDataTableMessage` has none at all.
 
 This is a reading, not a run. No `.txt` download was requested.
+
+## `skin-standard-xml/show.xsl.tpl` holds two live parse stops and removing the one at `:242` yields an unscrollable page
+
+File: `/Volumes/workspace/myx/ae3.sys.pkg.l2.tgt.xml/ae3-packages/ae3.sys.l2.tgt.xml/resources/skin/skin-standard-xml/show.xsl.tpl`, 2654 lines, md5 `0d37ed9093d014306b2b056483c7786a`, byte-identical to the `ws-myx.ae3-devel` copy.
+
+- Three `window.stop` calls sit at lines 207, 242 and 259. A brace scan puts 259 inside the `if(false)` block opened at 244 and closed at 263, so 207 and 242 are live and 259 is dead.
+- An XML parser, not a reading, gives the guard of each live stop: 207 is `client/@ae3 = 'r'`, 242 is `client/@ae3 = 'true'`.
+- Rendering the template through `xsltproc` shows which branch each input selects: `ae3="true"` gives 2 stops and 1 `.pg-root`, `ae3="r"` gives 1 stop and the `AAAA!` cover, and no `ae3` attribute gives 0 stops and 1 `.pg-root`.
+- The stop truncates the document. In WebKit, a page whose stop sits mid-document reports `readyState=loading`, `bodyLen=103` and its after-marker absent, where the same page without the stop reports `complete`, `bodyLen=152` and the marker present. The real template behaves alike: with the stop, 4 body children and 0 `.pg-root`, `readyState=loading`; without it, 5 children, 1 `.pg-root`, `complete`.
+- The page is revealed above the shell, as measured by hit-testing at the viewport centre: with the stop removed the topmost element is `DIV.pg-main`, under `DIV.pg-root`, and the branch's own cover div (`background-color:#aaa`, absolute, full viewport, no `z-index`) sits below both. A control gave that cover `z-index:1` and it then reported topmost, so the probe can report a cover on top.
+- That page cannot scroll. The branch's style block at `:210-221` sets `height:100%` and `overflow:hidden` on `BODY#body`, so with 3109 px of content in `.pg-main` the document height stays 768 and `window.scrollTo(0,500)` leaves `scrollY` at 0. The same page with that one block replaced by a comment scrolls to 500 and reports `docScrollHeight=3194`.
+- The deployed asset is this template: the served `!/skin/skin-standard-xml/show.xsl` (200, 91 450 bytes) equals the source template once whitespace inside tags is normalised, 91 157 bytes against 91 157. The control, `showAuth.xsl.tpl`, differs under the same normalisation.
+- A guest cannot reach this page on `ndss002.ndm9.xyz`: `/`, `/?ae3=r` and `/?ae3=true` each answer 922 bytes with 0 `.pg-root`, while the asset itself answers 200. So a browser load of the shell branch needs a locally served or locally rendered page, which is how these measurements were taken.
